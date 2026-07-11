@@ -6,13 +6,37 @@
 	objectVersion = 77;
 	objects = {
 
+/* Begin PBXBuildFile section */
+		F3B5B45E3001A88E0066D68A /* GoogleSignIn in Frameworks */ = {isa = PBXBuildFile; productRef = F3B5B45D3001A88E0066D68A /* GoogleSignIn */; };
+		F3B5B4603001A88E0066D68A /* GoogleSignInSwift in Frameworks */ = {isa = PBXBuildFile; productRef = F3B5B45F3001A88E0066D68A /* GoogleSignInSwift */; };
+		F3F9B30C3001E3590062661C /* .gitignore in Resources */ = {isa = PBXBuildFile; fileRef = F3F9B3063001E3590062661C /* .gitignore */; };
+		F3F9B30F3001E3590062661C /* README.md in Resources */ = {isa = PBXBuildFile; fileRef = F3F9B30A3001E3590062661C /* README.md */; };
+		F3F9B32A3001E4770062661C /* LICENSE in Sources */ = {isa = PBXBuildFile; fileRef = F3F9B3293001E46F0062661C /* LICENSE */; };
+/* End PBXBuildFile section */
+
 /* Begin PBXFileReference section */
 		F3EF826A300008F600A6A46B /* MisGastos.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = MisGastos.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		F3F9B3063001E3590062661C /* .gitignore */ = {isa = PBXFileReference; lastKnownFileType = text; path = .gitignore; sourceTree = "<group>"; };
+		F3F9B30A3001E3590062661C /* README.md */ = {isa = PBXFileReference; lastKnownFileType = net.daringfireball.markdown; path = README.md; sourceTree = "<group>"; };
+		F3F9B3293001E46F0062661C /* LICENSE */ = {isa = PBXFileReference; lastKnownFileType = text; path = LICENSE; sourceTree = "<group>"; };
 /* End PBXFileReference section */
+
+/* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
+		F3EF829F300016E700A6A46B /* Exceptions for "MisGastos" folder in "MisGastos" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				Info.plist,
+			);
+			target = F3EF8269300008F600A6A46B /* MisGastos */;
+		};
+/* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
 		F3EF826C300008F600A6A46B /* MisGastos */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+				F3EF829F300016E700A6A46B /* Exceptions for "MisGastos" folder in "MisGastos" target */,
+			);
 			path = MisGastos;
 			sourceTree = "<group>";
 		};
@@ -23,6 +47,8 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				F3B5B45E3001A88E0066D68A /* GoogleSignIn in Frameworks */,
+				F3B5B4603001A88E0066D68A /* GoogleSignInSwift in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -34,6 +60,9 @@
 			children = (
 				F3EF826C300008F600A6A46B /* MisGastos */,
 				F3EF826B300008F600A6A46B /* Products */,
+				F3F9B30A3001E3590062661C /* README.md */,
+				F3F9B3063001E3590062661C /* .gitignore */,
+				F3F9B3293001E46F0062661C /* LICENSE */,
 			);
 			sourceTree = "<group>";
 		};
@@ -65,6 +94,8 @@
 			);
 			name = MisGastos;
 			packageProductDependencies = (
+				F3B5B45D3001A88E0066D68A /* GoogleSignIn */,
+				F3B5B45F3001A88E0066D68A /* GoogleSignInSwift */,
 			);
 			productName = MisGastos;
 			productReference = F3EF826A300008F600A6A46B /* MisGastos.app */;
@@ -94,6 +125,9 @@
 			);
 			mainGroup = F3EF8261300008F600A6A46B;
 			minimizedProjectReferenceProxies = 1;
+			packageReferences = (
+				F3B5B45C3001A88E0066D68A /* XCRemoteSwiftPackageReference "GoogleSignIn-iOS" */,
+			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = F3EF826B300008F600A6A46B /* Products */;
 			projectDirPath = "";
@@ -109,6 +143,8 @@
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				F3F9B30C3001E3590062661C /* .gitignore in Resources */,
+				F3F9B30F3001E3590062661C /* README.md in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -119,6 +155,7 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				F3F9B32A3001E4770062661C /* LICENSE in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -256,6 +293,8 @@
 				DEVELOPMENT_TEAM = WXC852NX6D;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = MisGastos/Info.plist;
+				INFOPLIST_KEY_LSApplicationCategoryType = "";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
@@ -288,6 +327,8 @@
 				DEVELOPMENT_TEAM = WXC852NX6D;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = MisGastos/Info.plist;
+				INFOPLIST_KEY_LSApplicationCategoryType = "";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
@@ -332,6 +373,30 @@
 			defaultConfigurationName = Release;
 		};
 /* End XCConfigurationList section */
+
+/* Begin XCRemoteSwiftPackageReference section */
+		F3B5B45C3001A88E0066D68A /* XCRemoteSwiftPackageReference "GoogleSignIn-iOS" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/google/GoogleSignIn-iOS";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 9.2.0;
+			};
+		};
+/* End XCRemoteSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		F3B5B45D3001A88E0066D68A /* GoogleSignIn */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = F3B5B45C3001A88E0066D68A /* XCRemoteSwiftPackageReference "GoogleSignIn-iOS" */;
+			productName = GoogleSignIn;
+		};
+		F3B5B45F3001A88E0066D68A /* GoogleSignInSwift */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = F3B5B45C3001A88E0066D68A /* XCRemoteSwiftPackageReference "GoogleSignIn-iOS" */;
+			productName = GoogleSignInSwift;
+		};
+/* End XCSwiftPackageProductDependency section */
 	};
 	rootObject = F3EF8262300008F600A6A46B /* Project object */;
 }
