@@ -15,6 +15,7 @@ enum Ruta: Hashable {
     case perfil
     case categorias
     case reportes
+    case proyecciones
     case eventos
     case evento(Int)
 }
@@ -37,6 +38,7 @@ extension View {
             case .perfil: PerfilView()
             case .categorias: CategoriasView()
             case .reportes: ReportesView()
+            case .proyecciones: ProyeccionesView()
             case .eventos: EventosView()
             case .evento(let id): EventoDetalleView(id: id)
             }
@@ -68,6 +70,7 @@ struct MasView: View {
                 NavigationLink(value: Ruta.ingresos) { Label("Ingresos", systemImage: "arrow.down.circle") }
                 NavigationLink(value: Ruta.eventos) { Label("Eventos (dividir la cuenta)", systemImage: "fork.knife") }
                 NavigationLink(value: Ruta.reportes) { Label("Reportes", systemImage: "chart.bar.doc.horizontal") }
+                NavigationLink(value: Ruta.proyecciones) { Label("Proyecciones", systemImage: "chart.line.downtrend.xyaxis") }
             }
             Section("Ajustes") {
                 NavigationLink(value: Ruta.perfil) { Label("Mi perfil", systemImage: "person.crop.circle") }
