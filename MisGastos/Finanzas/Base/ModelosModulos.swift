@@ -107,6 +107,11 @@ nonisolated struct Tarjeta: Decodable, Identifiable, Hashable {
     let diaPago: Int
     let deuda: String
     let disponible: String
+    /// Intereses bonificables del último corte, ya restados del disponible (el banco los resuelve en el corte siguiente).
+    let interesesRetenidos: String?
+    /// false = el banco solo resta el capital (Davivienda): intereses, comisiones e IVA no bajan el disponible hasta pagarse.
+    let cargosRestanDisponible: Bool?
+    let cargosSinRestar: String?
     let proximoCorte: String?
     let porPagar: PorPagarTarjeta?
     let activo: Bool
@@ -132,7 +137,8 @@ nonisolated struct MovimientoTarjeta: Decodable, Identifiable, Hashable {
 }
 
 nonisolated struct LineaPorFacturar: Decodable, Hashable { let movimientoId: Int; let descripcion: String; let fecha: String; let cuotaNumero: Int?; let cuotas: Int?; let monto: String }
-nonisolated struct PorFacturar: Decodable { let total: String; let lineas: [LineaPorFacturar] }
+/// saldoAFavor (≤ 0): el último corte quedó a favor; ya va restado en total.
+nonisolated struct PorFacturar: Decodable { let total: String; let lineas: [LineaPorFacturar]; let saldoAFavor: String? }
 nonisolated struct PeriodoAbierto: Decodable { let desde: String; let corte: String? }
 nonisolated struct EnCuotas: Decodable, Identifiable { var id: Int { movimiento.id }; let movimiento: MovimientoTarjeta; let cuotasCobradas: Int }
 
@@ -141,16 +147,25 @@ nonisolated struct EstadoCuenta: Decodable, Identifiable {
     let fechaCorte: String
     let fechaLimitePago: String?
     let total: String
+    /// ≤ 0: saldo a favor del corte anterior (ya va en total).
+    let saldoAnterior: String?
+    /// Los trae el estado de cuenta del banco; los del último corte se apartan del disponible hasta el corte siguiente.
+    let interesesBonificables: String?
     let compromisoId: Int?
     let estado: String?
     let saldoPendiente: String?
 }
 
+nonisolated struct InteresesBody: Encodable { let interesesBonificables: String }
+
 nonisolated struct CostoNoPagar: Decodable { let interesMes: Double; let tasa: Double }
 nonisolated struct PagoPendienteTarjeta: Decodable, Identifiable { var id: Int { compromiso.id }; let compromiso: Compromiso; let costoDeNoPagar: CostoNoPagar? }
 
 /// Lo que la tarjeta cobra en cada corte (seguro, membresía…); se agrega solo al estado de cuenta.
-nonisolated struct CargoFijo: Decodable, Identifiable { let id: Int; let descripcion: String; let monto: String; let desde: String; let activo: Bool }
+nonisolated struct CargoFijo: Decodable, Identifiable { let id: Int; let descripcion: String; let monto: String; let desde: String; let activo: Bool; let categoriaPersonalId: Int? }
+
+/// desde: primer corte en el que se cobra.
+nonisolated struct CargoFijoBody: Encodable { let descripcion: String; let monto: String; let desde: String; let activo: Bool; let categoriaPersonalId: Int? }
 
 /// Un pago hecho a la tarjeta (clase: efectivo | cuenta | tarjeta).
 nonisolated struct PagoTarjeta: Decodable, Identifiable {
@@ -205,6 +220,7 @@ nonisolated struct TarjetaBody: Encodable {
     let diaPago: Int
     let activo: Bool
     let permiteAvances: Bool
+    let cargosRestanDisponible: Bool
     /// Solo al crear: disponible hoy y, si hay, el estado de cuenta pendiente
     let disponible: String?
     let tienePendiente: Bool?
@@ -418,7 +434,10 @@ nonisolated struct ReciboBody: Encodable {
     let userId: Int?
 }
 
-/// Sin "conceptos": la plantilla de descuentos se mantiene (se edita en la web).
+/// Concepto de la plantilla: monto fijo o porcentaje del bruto (con tope); sin ninguno = variable. prestamoId = se registra como pago de ese préstamo.
+nonisolated struct ConceptoBody: Encodable { let nombre: String; let tipo: String; let monto: String?; let porcentaje: String?; let tope: String?; let prestamoId: Int? }
+
+/// conceptos == nil: la plantilla se mantiene; una lista (aun vacía) la reemplaza completa.
 nonisolated struct FuenteBody: Encodable {
     let nombre: String
     let tipoIngresoId: Int
@@ -431,10 +450,11 @@ nonisolated struct FuenteBody: Encodable {
     let color: String?
     let activo: Bool
     let userId: Int?
+    var conceptos: [ConceptoBody]? = nil
 
     /// convertToSnakeCase no separa los dígitos ("dia_pago2"): la llave va escrita.
     enum CodingKeys: String, CodingKey {
-        case nombre, tipoIngresoId, pagador, frecuencia, diaPago, diaPago2 = "dia_pago_2", montoBruto, destino, color, activo, userId
+        case nombre, tipoIngresoId, pagador, frecuencia, diaPago, diaPago2 = "dia_pago_2", montoBruto, destino, color, activo, userId, conceptos
     }
 }
 
@@ -460,10 +480,11 @@ nonisolated struct CompromisoBody: Encodable {
     var finalizacion: String? = nil
     var fechaFin: String? = nil
     var totalCuotas: Int? = nil
+    var esPresupuesto: Bool? = nil
 
     enum CodingKeys: String, CodingKey {
         case descripcion, monto, medioPago, categoriaPersonalId, comentario, contactoId, userId, recurrenciaTipo, fechaEsperada,
-             frecuencia, diaSemana, diaPago, diaPago2 = "dia_pago_2", fechaInicio, finalizacion, fechaFin, totalCuotas
+             frecuencia, diaSemana, diaPago, diaPago2 = "dia_pago_2", fechaInicio, finalizacion, fechaFin, totalCuotas, esPresupuesto
     }
 }
 

@@ -14,6 +14,8 @@ enum ArranqueDebug {
 
     static var pestana: Int? { entorno["MG_PESTANA"].flatMap(Int.init) }
     static var abrir: String? { entorno["MG_ABRIR"] }
+    /// SIMCTL_CHILD_MG_HOJA: formulario a abrir en la pantalla de destino ("editar", "nuevo", "cargo:5", "cargo-nuevo")
+    static var hoja: String? { entorno["MG_HOJA"] }
 
     /// "mas:cuentas,cuenta:43" → [.cuentas, .cuenta(43)]
     static var rutasMas: [Ruta]? {
@@ -38,7 +40,10 @@ extension Ruta {
         case "ingreso": self = .ingreso(id)
         case "perfil": self = .perfil
         case "categorias": self = .categorias
+        case "reportes": self = .reportes
         case "compromiso": self = .compromiso(id)
+        case "eventos": self = .eventos
+        case "evento": self = .evento(id)
         default: return nil
         }
     }

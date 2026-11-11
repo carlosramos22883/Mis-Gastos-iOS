@@ -40,6 +40,10 @@ final class API {
         try await pedir("PUT", ruta, cuerpo: cuerpo)
     }
 
+    func patch<T: Decodable, B: Encodable>(_ ruta: String, _ cuerpo: B) async throws -> T {
+        try await pedir("PATCH", ruta, cuerpo: cuerpo)
+    }
+
     /// Para peticiones cuya respuesta no interesa (204, DELETE…).
     func enviar<B: Encodable>(_ metodo: String, _ ruta: String, _ cuerpo: B? = nil as Vacio?) async throws {
         let _: Vacio = try await pedir(metodo, ruta, cuerpo: cuerpo, ignorarCuerpo: true)
@@ -47,6 +51,11 @@ final class API {
 
     func borrar(_ ruta: String, _ parametros: [String: String?] = [:]) async throws {
         let _: Vacio = try await pedir("DELETE", ruta, parametros: parametros, cuerpo: nil as Vacio?, ignorarCuerpo: true)
+    }
+
+    /// DELETE que devuelve el registro actualizado (ej. quitar el pago de un participante de un evento).
+    func borrarDevolviendo<T: Decodable>(_ ruta: String) async throws -> T {
+        try await pedir("DELETE", ruta, cuerpo: nil as Vacio?)
     }
 
     /// Formulario multipart con un archivo (fotos). PHP no lee archivos en PUT/PATCH: va como POST con "_method" en los campos.
@@ -114,6 +123,33 @@ final class API {
 
     /// Descarga una imagen privada (fotos de contactos) con el token; en caché mientras la app está abierta.
     private let cache = NSCache<NSURL, NSData>()
+
+    /// Descarga un archivo (reportes en PDF, XLSX o CSV, la imagen de un evento) a la carpeta temporal y devuelve dónde quedó.
+    func descargar(_ ruta: String, _ parametros: [String: String?], nombre: String? = nil) async throws -> URL {
+        guard var componentes = URLComponents(string: Constants.baseURL + ruta) else { throw FallaAPI(mensaje: "Dirección no válida.") }
+        componentes.queryItems = parametros.compactMap { k, v in v.map { URLQueryItem(name: k, value: $0) } }
+        guard let url = componentes.url else { throw FallaAPI(mensaje: "Dirección no válida.") }
+        var request = URLRequest(url: url)
+        if let token = KeychainManager.shared.getToken() { request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization") }
+        guard let (datos, respuesta) = try? await URLSession.shared.data(for: request), let http = respuesta as? HTTPURLResponse else {
+            throw FallaAPI(mensaje: "No se pudo conectar con el servidor. Revisa tu conexión.")
+        }
+        switch http.statusCode {
+        case 200: break
+        case 403: throw FallaAPI(mensaje: "No tienes permiso para descargar esto.")
+        case 401:
+            NotificationCenter.default.post(name: API.sesionExpirada, object: nil)
+            throw FallaAPI(mensaje: "Tu sesión expiró. Vuelve a iniciar sesión.")
+        default: throw FallaAPI(mensaje: "No se pudo descargar el archivo (\(http.statusCode)).")
+        }
+        let nombre = nombre ?? (http.value(forHTTPHeaderField: "Content-Disposition")?.components(separatedBy: "filename=").last?
+            .trimmingCharacters(in: CharacterSet(charactersIn: "\" "))).flatMap { $0.isEmpty ? nil : $0 } ?? "reporte"
+        let carpeta = FileManager.default.temporaryDirectory.appendingPathComponent("reportes", isDirectory: true)
+        try FileManager.default.createDirectory(at: carpeta, withIntermediateDirectories: true)
+        let destino = carpeta.appendingPathComponent(nombre)
+        try datos.write(to: destino, options: .atomic)
+        return destino
+    }
 
     func olvidarImagen(_ direccion: String?) {
         if let d = direccion, let url = URL(string: d) { cache.removeObject(forKey: url as NSURL) }

@@ -25,6 +25,7 @@ struct FormularioCompromiso: View {
     @State private var finalizacion = "indefinido"
     @State private var fechaFin = Calendar.current.date(byAdding: .year, value: 1, to: Date()) ?? Date()
     @State private var totalCuotas = ""
+    @State private var esPresupuesto = false
     @State private var errores: [String: String] = [:]
     @State private var error: String?
     @State private var guardando = false
@@ -105,7 +106,10 @@ struct FormularioCompromiso: View {
                 LabeledContent("Número de pagos") { TextField("12", text: $totalCuotas).keyboardType(.numberPad).multilineTextAlignment(.trailing) }
                 ErrorCampo(texto: errores["total_cuotas"])
             }
-        } footer: { if frecuencia != "semanal" { Text("31 = último día de cada mes.") } }
+            Toggle("Es un presupuesto", isOn: $esPresupuesto)
+        } footer: {
+            Text((frecuencia != "semanal" ? "31 = último día de cada mes. " : "") + "Un presupuesto (súper, gasolina…) no se paga: se descuenta solo con los gastos de su categoría en cada ciclo.")
+        }
     }
 
     private func llenar() {
@@ -127,6 +131,7 @@ struct FormularioCompromiso: View {
             finalizacion = r?.fechaFin != nil ? "fecha" : r?.totalCuotas != nil ? "cuotas" : "indefinido"
             if let f = r?.fechaFin { fechaFin = Formato.fechaLocal(f) }
             totalCuotas = r?.totalCuotas.map(String.init) ?? ""
+            esPresupuesto = r?.esPresupuesto ?? false
         }
     }
 
@@ -157,6 +162,7 @@ struct FormularioCompromiso: View {
             cuerpo.finalizacion = finalizacion
             cuerpo.fechaFin = finalizacion == "fecha" ? Formato.textoLocal(fechaFin) : nil
             cuerpo.totalCuotas = finalizacion == "cuotas" ? Int(totalCuotas) : nil
+            cuerpo.esPresupuesto = esPresupuesto
         }
         do {
             switch modo {

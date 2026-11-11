@@ -31,6 +31,15 @@ nonisolated struct Dashboard: Decodable {
     let historial: [CicloHistorial]
     let alertas: [Alerta]
     let proximos: [Proximo]
+    /// Tope de gasto del ciclo (nil = sin tope) y presupuestos (súper, gasolina…) del ciclo
+    let tope: TopeGasto?
+    let presupuestos: [PresupuestoResumen]?
+}
+
+nonisolated struct TopeGasto: Decodable { let tope: Double; let gastado: Double; let queda: Double; let porDia: Double; let porcentaje: Int; let diasRestantes: Int }
+/// queda < 0 = se pasó; comprometido = compromisos de su categoría aún por pagar (ya apartados)
+nonisolated struct PresupuestoResumen: Decodable, Identifiable {
+    let id: Int; let descripcion: String; let color: String?; let monto: Double; let gastado: Double; let comprometido: Double; let queda: Double
 }
 
 nonisolated struct CicloResumen: Decodable { let inicio: String; let fin: String; let diasRestantes: Int }
@@ -132,7 +141,22 @@ nonisolated struct Compromiso: Decodable, Identifiable, Hashable {
     let categoria: CategoriaMini?
     let recurrente: Recurrente?
     let tarjeta: TarjetaMini?
+    /// Lo pagado de más a una tarjeta: quedó como crédito en ella.
+    let excedente: String?
     let abonos: [MovimientoEfectivo]?
+    /// Presupuesto (súper, gasolina…): no se paga, se descuenta con los gastos de su categoría
+    let esPresupuesto: Bool?
+    let presupuesto: PresupuestoDetalle?
+}
+
+nonisolated struct PresupuestoDetalle: Decodable, Hashable {
+    let monto: String; let gastado: String; let comprometido: String; let queda: String
+    let movimientos: [MovimientoPresupuesto]?
+}
+/// Un gasto que descuenta el presupuesto; origen = de dónde salió (Efectivo, la cuenta o la tarjeta).
+nonisolated struct MovimientoPresupuesto: Decodable, Hashable, Identifiable {
+    let clase: String; let id: Int; let fecha: String; let descripcion: String; let origen: String; let monto: String
+    var clave: String { "\(clase)-\(id)" }
 }
 
 /// La regla de la serie (sus datos sirven para editarla).
@@ -141,6 +165,7 @@ nonisolated struct Recurrente: Decodable, Hashable {
     let frecuencia: String
     let descripcionFrecuencia: String?
     let activo: Bool
+    let esPresupuesto: Bool?
     let descripcion: String?
     let monto: String?
     let diaSemana: Int?

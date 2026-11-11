@@ -91,7 +91,12 @@ struct IngresoDetalleView: View {
         .navigationTitle(f?.nombre ?? "Ingreso")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar { if f != nil { ToolbarItem(placement: .primaryAction) { Button("Editar") { editar = true } } } }
-        .task { await cargar() }
+        .task {
+            await cargar()
+            #if DEBUG
+            if ArranqueDebug.hoja == "editar" { editar = true }
+            #endif
+        }
         .refreshable { await cargar() }
         .sheet(isPresented: $registrar) {
             if let f { FormularioRecibo(fuente: f) { nueva, neto in self.f = nueva; aviso = "Pago registrado: entraron \(Formato.dinero(neto))." } }
@@ -263,8 +268,20 @@ struct FormularioRecibo: View {
     }
 }
 
-/// Alta o edición de una fuente de ingreso (la plantilla de descuentos se edita en la web).
+/// Alta o edición de una fuente de ingreso con su plantilla de descuentos y adiciones.
 struct FormularioFuente: View {
+    /// modo: fijo (monto) | porcentaje (del bruto, con tope opcional) | variable (se escribe en cada pago).
+    struct Concepto: Identifiable {
+        let id = UUID()
+        var nombre = ""
+        var tipo = "descuento"
+        var modo = "fijo"
+        var monto = ""
+        var porcentaje = ""
+        var tope = ""
+        var prestamoId: Int?
+    }
+
     let fuente: FuenteIngreso?
     let alGuardar: (String) -> Void
     var alEliminar: (() -> Void)? = nil
@@ -282,6 +299,8 @@ struct FormularioFuente: View {
     @State private var activo = true
     @State private var userId: Int?
     @State private var cajas: [(valor: String, nombre: String, saldo: String)] = []
+    @State private var conceptos: [Concepto] = []
+    @State private var prestamos: [Prestamo] = []
     @State private var errores: [String: String] = [:]
     @State private var error: String?
     @State private var guardando = false
@@ -289,6 +308,7 @@ struct FormularioFuente: View {
 
     var body: some View {
         NavigationStack {
+            ScrollViewReader { lector in
             Form {
                 Section {
                     TextField("Nombre (ej: Sueldo Stefany)", text: $nombre); ErrorCampo(texto: errores["nombre"])
@@ -312,13 +332,56 @@ struct FormularioFuente: View {
                 Section {
                     SelectorColor(color: $color)
                     if fuente != nil { Toggle("Activa", isOn: $activo) }
-                } footer: { Text("Los descuentos de planilla (ISSS, AFP, renta, préstamos) se configuran en la web.") }
+                }
+                plantilla
                 if let error, errores.isEmpty { Text(error).foregroundStyle(.red) }
+            }
+            #if DEBUG
+            .task(id: conceptos.count) { if ArranqueDebug.hoja == "editar", !conceptos.isEmpty { lector.scrollTo("agregar-concepto", anchor: .top) } }
+            #endif
             }
             .barraFormulario(fuente == nil ? "Nueva fuente de ingreso" : "Editar fuente", guardando: guardando, guardar: { await guardar() },
                              eliminar: accionEliminar, queSeElimina: "esta fuente")
             .task { await llenar() }
         }
+    }
+
+    /// ISSS, AFP, renta, cuota de un préstamo, bonos…: se proponen solos en cada pago recibido.
+    @ViewBuilder
+    private var plantilla: some View {
+        ForEach(Array($conceptos.enumerated()), id: \.element.id) { i, $c in
+            Section {
+                HStack {
+                    TextField("Nombre (ej: AFP)", text: $c.nombre)
+                    Button { conceptos.removeAll { $0.id == c.id } } label: { Image(systemName: "minus.circle.fill").foregroundStyle(.red) }
+                        .buttonStyle(.borderless).accessibilityLabel("Quitar \(c.nombre)")
+                }
+                ErrorCampo(texto: errores["conceptos.\(i).nombre"])
+                Picker("Tipo", selection: $c.tipo) { Text("Descuento").tag("descuento"); Text("Adición").tag("adicion") }.pickerStyle(.segmented)
+                Picker("Cálculo", selection: $c.modo) { Text("Monto fijo").tag("fijo"); Text("% del bruto").tag("porcentaje"); Text("Variable").tag("variable") }
+                    .pickerStyle(.segmented)
+                switch c.modo {
+                case "fijo":
+                    CampoMonto(etiqueta: "Monto", valor: $c.monto, error: errores["conceptos.\(i).monto"])
+                case "porcentaje":
+                    LabeledContent("Porcentaje %") { TextField("0", text: $c.porcentaje).keyboardType(.decimalPad).multilineTextAlignment(.trailing) }
+                    ErrorCampo(texto: errores["conceptos.\(i).porcentaje"])
+                    LabeledContent("Tope (opcional)") { CampoMonto(etiqueta: "Sin tope", valor: $c.tope).multilineTextAlignment(.trailing).frame(maxWidth: 140) }
+                    ErrorCampo(texto: errores["conceptos.\(i).tope"])
+                default:
+                    Text("El monto se escribe en cada pago (ej. horas extra, renta que cambia).").font(.caption).foregroundStyle(.secondary)
+                }
+                if c.tipo == "descuento" && !prestamos.isEmpty {
+                    Picker("¿Es la cuota de un préstamo?", selection: $c.prestamoId) {
+                        Text("No").tag(nil as Int?)
+                        ForEach(prestamos) { Text($0.nombre).tag($0.id as Int?) }
+                    }
+                }
+            } header: { if i == 0 { Text("Descuentos y adiciones") } }
+        }
+        Section {
+            Button { conceptos.append(Concepto()) } label: { Label("Agregar concepto", systemImage: "plus") }.id("agregar-concepto")
+        } header: { if conceptos.isEmpty { Text("Descuentos y adiciones") } } footer: { Text("Se proponen solos al registrar cada pago; ahí se ajustan a la boleta.") }
     }
 
     private var accionEliminar: (() async -> Void)? {
@@ -329,8 +392,13 @@ struct FormularioFuente: View {
     private func llenar() async {
         await comunes.cargarCatalogos()
         cajas = await cargarCajas(conTarjetas: false)
+        if let r: Envoltura<[Prestamo]> = try? await API.shared.get("/prestamos") { prestamos = r.data.filter(\.activo) }
         userId = comunes.usuario?.id
         guard let s = fuente else { tipoId = comunes.catalogos?.tiposIngreso?.first?.id; return }
+        conceptos = s.conceptos.map { c in
+            Concepto(nombre: c.nombre, tipo: c.tipo, modo: c.porcentaje != nil ? "porcentaje" : num(c.monto) > 0 ? "fijo" : "variable",
+                     monto: num(c.monto) > 0 ? c.monto ?? "" : "", porcentaje: c.porcentaje ?? "", tope: num(c.tope) > 0 ? c.tope ?? "" : "", prestamoId: c.prestamoId)
+        }
         nombre = s.nombre; tipoId = s.tipoIngresoId; pagador = s.pagador ?? ""; frecuencia = s.frecuencia
         diaPago = s.diaPago.map(String.init) ?? ""; diaPago2 = s.diaPago2.map(String.init) ?? ""
         bruto = num(s.montoBruto) > 0 ? s.montoBruto ?? "" : ""; destino = s.destino ?? "efectivo"; color = s.color ?? color; activo = s.activo; userId = s.userId
@@ -342,14 +410,27 @@ struct FormularioFuente: View {
         if tipoId == nil { e["tipo_ingreso_id"] = "Elige el tipo." }
         if !diaPago.isEmpty && CampoDia.valido(diaPago) == nil { e["dia_pago"] = "Día del 1 al 31." }
         if frecuencia == "quincenal" && CampoDia.valido(diaPago2) == nil { e["dia_pago_2"] = "Día del 1 al 31." }
-        if !bruto.isEmpty && bruto.range(of: #"^\d+(\.\d{1,2})?$"#, options: .regularExpression) == nil { e["monto_bruto"] = "Máximo dos decimales." }
+        let dinero = { (t: String) in t.range(of: #"^\d+(\.\d{1,2})?$"#, options: .regularExpression) != nil }
+        if !bruto.isEmpty && !dinero(bruto) { e["monto_bruto"] = "Máximo dos decimales." }
+        for (i, c) in conceptos.enumerated() {
+            if c.nombre.trimmingCharacters(in: .whitespaces).isEmpty { e["conceptos.\(i).nombre"] = "Escribe el nombre (ej. AFP)." }
+            if c.modo == "fijo" && !Formato.montoValido(c.monto) { e["conceptos.\(i).monto"] = "Monto con máximo dos decimales." }
+            if c.modo == "porcentaje" && !(0...100).contains(Double(c.porcentaje) ?? -1) { e["conceptos.\(i).porcentaje"] = "Entre 0 y 100." }
+            if c.modo == "porcentaje" && !c.tope.isEmpty && !dinero(c.tope) { e["conceptos.\(i).tope"] = "Máximo dos decimales." }
+        }
         errores = e
         guard e.isEmpty, let tipoId else { return }
         guardando = true
         let p = pagador.trimmingCharacters(in: .whitespaces)
+        // La plantilla completa viaja siempre: lo que se quitó aquí se quita en el servidor
+        let plantilla = conceptos.map { c in
+            ConceptoBody(nombre: c.nombre.trimmingCharacters(in: .whitespaces), tipo: c.tipo, monto: c.modo == "fijo" ? c.monto : nil,
+                         porcentaje: c.modo == "porcentaje" ? c.porcentaje : nil, tope: c.modo == "porcentaje" && !c.tope.isEmpty ? c.tope : nil,
+                         prestamoId: c.tipo == "descuento" ? c.prestamoId : nil)
+        }
         let cuerpo = FuenteBody(nombre: nombre.trimmingCharacters(in: .whitespaces), tipoIngresoId: tipoId, pagador: p.isEmpty ? nil : p, frecuencia: frecuencia,
                                 diaPago: Int(diaPago), diaPago2: frecuencia == "quincenal" ? Int(diaPago2) : nil, montoBruto: bruto.isEmpty ? nil : bruto,
-                                destino: destino, color: color, activo: activo, userId: userId)
+                                destino: destino, color: color, activo: activo, userId: userId, conceptos: plantilla)
         do {
             if let s = fuente { try await API.shared.enviar("PUT", "/ingresos/\(s.id)", cuerpo) } else { try await API.shared.enviar("POST", "/ingresos", cuerpo) }
             alGuardar(fuente == nil ? "Fuente creada." : "Fuente actualizada.")

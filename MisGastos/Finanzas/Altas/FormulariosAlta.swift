@@ -70,6 +70,8 @@ struct BarraFormulario: ViewModifier {
                     ToolbarItem(placement: .bottomBar) { Button("Eliminar", role: .destructive) { confirmar = true }.tint(.red) }
                 }
             }
+            // El botón Eliminar flota abajo: que no tape el final del formulario
+            .contentMargins(.bottom, eliminar == nil ? 0 : 72, for: .scrollContent)
             .confirmationDialog("¿Eliminar \(queSeElimina)?", isPresented: $confirmar, titleVisibility: .visible) {
                 Button("Eliminar", role: .destructive) { Task { await eliminar?() } }
             } message: { Text("Solo se puede si no tiene historial; si lo tiene, desactívalo.") }
@@ -201,6 +203,7 @@ struct FormularioTarjeta: View {
     @State private var diaPago = ""
     @State private var activo = true
     @State private var avances = true
+    @State private var cargosRestan = true
     @State private var disponible = ""
     @State private var tienePendiente = false
     @State private var pendienteMonto = ""
@@ -255,8 +258,9 @@ struct FormularioTarjeta: View {
                 Section {
                     SelectorColor(color: $color)
                     Toggle("Permite avances de efectivo", isOn: $avances)
+                    Toggle("Los cargos del banco restan del disponible", isOn: $cargosRestan)
                     if tarjeta != nil { Toggle("Activa", isOn: $activo) }
-                }
+                } footer: { Text("Apaga «los cargos del banco» si el banco solo resta el capital (Davivienda): intereses, comisiones e IVA bajan el disponible al pagarlos.") }
                 if let error, errores.isEmpty { Text(error).foregroundStyle(.red) }
             }
             .barraFormulario(tarjeta == nil ? "Nueva tarjeta" : "Editar tarjeta", guardando: guardando, guardar: { await guardar() },
@@ -276,7 +280,7 @@ struct FormularioTarjeta: View {
         guard let t = tarjeta else { return }
         nombre = t.nombre; bancoId = t.banco?.id; marcaId = t.marca?.id; digitos = t.ultimosDigitos ?? ""; color = t.color ?? color
         limite = t.limiteCredito; tasa = t.tasaInteres ?? ""; diaCorte = "\(t.diaCorte)"; diaPago = "\(t.diaPago)"
-        activo = t.activo; avances = t.permiteAvances; userId = t.userId
+        activo = t.activo; avances = t.permiteAvances; cargosRestan = t.cargosRestanDisponible ?? true; userId = t.userId
     }
 
     private func guardar() async {
@@ -297,7 +301,7 @@ struct FormularioTarjeta: View {
         let nueva = tarjeta == nil
         let cuerpo = TarjetaBody(nombre: nombre.trimmingCharacters(in: .whitespaces), bancoId: bancoId, marcaRedId: marcaId, ultimosDigitos: digitos.isEmpty ? nil : digitos,
                                  color: color, limiteCredito: limite, tasaInteres: tasa.isEmpty ? nil : tasa, diaCorte: corte, diaPago: pago, activo: activo,
-                                 permiteAvances: avances, disponible: nueva ? disponible : nil, tienePendiente: nueva ? tienePendiente : nil,
+                                 permiteAvances: avances, cargosRestanDisponible: cargosRestan, disponible: nueva ? disponible : nil, tienePendiente: nueva ? tienePendiente : nil,
                                  pendienteMonto: nueva && tienePendiente ? pendienteMonto : nil,
                                  pendienteFecha: nueva && tienePendiente ? Formato.textoLocal(pendienteFecha) : nil, userId: userId)
         do {

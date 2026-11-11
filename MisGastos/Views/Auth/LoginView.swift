@@ -23,15 +23,16 @@ struct LoginView: View {
             VStack(spacing: 25) {
                 // Logo y título
                 VStack(spacing: 15) {
-                    Image(systemName: "dollarsign.circle.fill")
-                        .font(.system(size: 90))
-                        .foregroundColor(.blue)
+                    Image("AppLogo")
+                        .resizable()
+                        .scaledToFit()
+                        .frame(width: 120, height: 120)
                         .shadow(color: .blue.opacity(0.3), radius: 10)
                     
                     Text("Mis Gastos")
                         .font(.system(size: 36, weight: .bold, design: .rounded))
                     
-                    Text("Controla tus finanzas personales")
+                    Text("Inicia sesión")
                         .foregroundColor(.gray)
                         .font(.subheadline)
                 }

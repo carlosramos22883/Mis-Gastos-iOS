@@ -5,7 +5,13 @@ struct RegisterView: View {
     @Environment(\.dismiss) private var dismiss
     
     var body: some View {
+        
         VStack(spacing: 20) {
+            Image("AppLogo")
+                .resizable()
+                .scaledToFit()
+                .frame(width: 120, height: 120)
+                .shadow(color: .blue.opacity(0.3), radius: 10)
             // Título
             Text("Crear Cuenta")
                 .font(.largeTitle)
@@ -78,8 +84,7 @@ struct RegisterView: View {
             }
             .padding(.bottom, 40)
         }
-        // ❌ ELIMINAMOS ESTA LÍNEA QUE CAUSABA EL ERROR:
-        // .navigationDestination(isPresented: $viewModel.isLoggedIn) { ProfileView() }
+        
     }
 }
 

@@ -120,7 +120,7 @@ struct CompromisoDetalleView: View {
             #endif
         }
         .sheet(isPresented: $pagando) {
-            if let c = compromiso { FormularioPago(compromiso: c) { aviso = "Pago registrado."; Task { await cargar() } } }
+            if let c = compromiso { FormularioPago(compromiso: c) { aviso = $0; Task { await cargar() } } }
         }
         .sheet(isPresented: Binding(get: { editando != nil }, set: { if !$0 { editando = nil } })) {
             if let m = editando { FormularioCompromiso(modo: m) { aviso = $0; Task { await cargar() } } }
@@ -139,22 +139,44 @@ struct CompromisoDetalleView: View {
                 VStack(alignment: .leading, spacing: 6) {
                     Text(c.descripcion).font(.title3.weight(.semibold))
                     Insignia(texto: c.estadoTexto, color: colorEstado(c.estadoVisual))
-                    Text(Formato.dinero(c.estado == "pendiente" ? c.saldoPendiente : c.monto)).font(.system(size: 32, weight: .bold))
+                    if let p = c.presupuesto {
+                        Text(Formato.dinero(p.queda)).font(.system(size: 32, weight: .bold)).foregroundStyle((Double(p.queda) ?? 0) < 0 ? .red : .primary)
+                        Text((Double(p.queda) ?? 0) < 0 ? "Te pasaste del presupuesto" : "Te queda de presupuesto este ciclo").font(.caption).foregroundStyle(.secondary)
+                    } else {
+                        Text(Formato.dinero(c.estado == "pendiente" ? c.saldoPendiente : c.monto)).font(.system(size: 32, weight: .bold))
+                    }
                 }
             }
-            Section("Detalle") {
+            // Presupuesto: no se paga; lo descuentan los gastos de su categoría, salgan de donde salgan
+            if let p = c.presupuesto {
+                Section("Presupuesto") {
+                    FilaValor(etiqueta: "Presupuesto del ciclo", valor: Formato.dinero(p.monto))
+                    FilaValor(etiqueta: "Gastado", valor: Formato.dinero(p.gastado))
+                    if (Double(p.comprometido) ?? 0) > 0 { FilaValor(etiqueta: "Por pagar (compromisos de la categoría)", valor: Formato.dinero(p.comprometido)) }
+                    FilaValor(etiqueta: "Queda", valor: Formato.dinero(p.queda), negrita: true)
+                }
+                Section("Gastos que lo descuentan") {
+                    if (p.movimientos ?? []).isEmpty { Text("Aún no hay gastos de esta categoría en el ciclo.").foregroundStyle(.secondary) }
+                    ForEach(p.movimientos ?? [], id: \.clave) { mv in
+                        FilaValor(etiqueta: "\(Formato.fechaCorta(mv.fecha)) · \(mv.descripcion) (\(mv.origen))", valor: Formato.dinero(mv.monto))
+                    }
+                }
+            }
+            if c.presupuesto == nil { Section("Detalle") {
                 FilaValor(etiqueta: "Monto", valor: Formato.dinero(c.monto))
                 FilaValor(etiqueta: "Pagado", valor: Formato.dinero(c.montoPagado))
                 FilaValor(etiqueta: "Pendiente", valor: Formato.dinero(c.saldoPendiente), negrita: true)
+                if let x = c.excedente, (Double(x) ?? 0) > 0 { FilaValor(etiqueta: "Pagado de más (crédito en la tarjeta)", valor: Formato.dinero(x)) }
                 FilaValor(etiqueta: "Fecha esperada", valor: c.fechaEsperada.map { Formato.fechaLarga($0) } ?? "Sin fecha")
                 if let n = c.numeroCuota { FilaValor(etiqueta: "Cuota", valor: "\(n)" + (c.totalCuotas.map { " de \($0)" } ?? "")) }
-                if let t = c.tarjeta { FilaValor(etiqueta: "Tarjeta", valor: t.nombre ?? "") }
+                // El estado de cuenta de una tarjeta: su detalle está en la tarjeta
+                if let t = c.tarjeta { NavigationLink(value: Ruta.tarjeta(t.id)) { FilaValor(etiqueta: "Tarjeta", valor: "\(t.nombre ?? "") ›") }.buttonStyle(.plain) }
                 if let cat = c.categoria { FilaValor(etiqueta: "Categoría", valor: cat.nombre) }
                 if let con = c.contacto { FilaValor(etiqueta: "Con", valor: con.nombre) }
                 if let r = c.recurrente { FilaValor(etiqueta: "Se repite", valor: r.descripcionFrecuencia ?? r.frecuencia) }
                 if let q = comunes.quien(c.userId) { FilaValor(etiqueta: "Registrado por", valor: q) }
                 if let com = c.comentario, !com.isEmpty { Text(com).font(.footnote).foregroundStyle(.secondary) }
-            }
+            } }
             if let abonos = c.abonos, !abonos.isEmpty {
                 Section("Pagos en efectivo") {
                     ForEach(abonos) { a in FilaValor(etiqueta: "\(Formato.fechaCorta(a.fecha)) · \(a.descripcion)", valor: Formato.dinero(a.monto)) }
@@ -162,7 +184,7 @@ struct CompromisoDetalleView: View {
             }
             if c.estado == "pendiente" {
                 Section {
-                    Button("Pagar") { pagando = true }.frame(maxWidth: .infinity).buttonStyle(.borderedProminent)
+                    if c.esPresupuesto != true { Button("Pagar") { pagando = true }.frame(maxWidth: .infinity).buttonStyle(.borderedProminent) }
                     if c.tarjeta == nil { Button("Editar este pago") { editando = .pago(c) } }
                     if let r = c.recurrente, r.activo { Button("Editar la serie (\(r.descripcionFrecuencia ?? r.frecuencia))") { editando = .serie(c) } }
                     Button("Cancelar este pago") { cancelarSerie = false }
@@ -191,7 +213,7 @@ struct CompromisoDetalleView: View {
 /// Pagar un compromiso (completo o un abono). Si es el estado de cuenta de una tarjeta no pide categoría.
 struct FormularioPago: View {
     let compromiso: Compromiso
-    let alPagar: () -> Void
+    let alPagar: (String) -> Void
 
     @Environment(\.dismiss) private var cerrar
     @State private var origenes: [(String, String)] = []
@@ -221,7 +243,11 @@ struct FormularioPago: View {
                 }
                 Section {
                     CampoMonto(etiqueta: "Monto", valor: $monto, error: errores["monto"])
-                    Text("Pendiente: \(Formato.dinero(compromiso.saldoPendiente)) (un monto menor es un abono)").font(.caption).foregroundStyle(.secondary)
+                    // A una tarjeta se le puede pagar de más: el excedente queda como crédito en ella
+                    let deMas = (Double(monto) ?? 0) - (Double(compromiso.saldoPendiente) ?? 0)
+                    Text(compromiso.tarjeta != nil && deMas > 0.004
+                         ? "Pagas \(Formato.dinero(deMas)) de más: quedarán como crédito en la tarjeta (sube su disponible y baja el próximo corte)."
+                         : "Pendiente: \(Formato.dinero(compromiso.saldoPendiente)) (un monto menor es un abono)").font(.caption).foregroundStyle(.secondary)
                     DatePicker("Fecha", selection: $fecha, in: ...Date(), displayedComponents: .date)
                     ErrorCampo(texto: errores["fecha"])
                     TextField("Descripción", text: $descripcion); ErrorCampo(texto: errores["descripcion"])
@@ -272,8 +298,9 @@ struct FormularioPago: View {
         let cuerpo = PagoCompromisoBody(origen: origen, descripcion: descripcion, monto: monto, fecha: Formato.textoLocal(fecha),
                                         categoriaPersonalId: compromiso.tarjeta == nil ? categoriaId : nil, userId: userId)
         do {
-            let _: Envoltura<Compromiso> = try await API.shared.post("/compromisos/\(compromiso.id)/pagar", cuerpo)
-            alPagar(); cerrar()
+            let r: Envoltura<Compromiso> = try await API.shared.post("/compromisos/\(compromiso.id)/pagar", cuerpo)
+            let excedente = Double(r.data.excedente ?? "") ?? 0
+            alPagar(excedente > 0 ? "Pago registrado. Pagaste \(Formato.dinero(excedente)) de más: quedaron como crédito en la tarjeta." : "Pago registrado."); cerrar()
         } catch let f as FallaAPI { errores = f.campos; error = f.mensaje }
         catch { self.error = error.localizedDescription }
         guardando = false

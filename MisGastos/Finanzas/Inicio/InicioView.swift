@@ -56,6 +56,8 @@ struct InicioView: View {
                 .padding(20).frame(maxWidth: .infinity, alignment: .leading)
                 .background(Color.accentColor.opacity(0.15), in: RoundedRectangle(cornerRadius: 16))
 
+                if d.tope != nil || !(d.presupuestos ?? []).isEmpty { GastoDelCiclo(d: d) }
+
                 if !d.alertas.isEmpty {
                     Seccion("Avisos") {
                         ForEach(d.alertas) { a in
@@ -183,6 +185,51 @@ struct InicioView: View {
                         }
                     }.frame(height: 6)
                 }
+            }
+        }
+    }
+}
+
+/// Termómetro del ciclo: el tope de gasto y cada presupuesto (súper, gasolina…). Ámbar al 80 %, rojo al pasarse.
+private struct GastoDelCiclo: View {
+    let d: Dashboard
+
+    private func color(_ usado: Double, _ monto: Double) -> Color { usado > monto ? .red : usado >= monto * 0.8 ? Semantica.aviso : Semantica.ingreso }
+
+    private func barra(_ usado: Double, _ monto: Double, alto: CGFloat) -> some View {
+        GeometryReader { g in
+            ZStack(alignment: .leading) {
+                Capsule().fill(Color.secondary.opacity(0.2))
+                Capsule().fill(color(usado, monto)).frame(width: monto > 0 ? g.size.width * min(1, max(0.02, usado / monto)) : 0)
+            }
+        }.frame(height: alto)
+    }
+
+    var body: some View {
+        Seccion("Gasto del ciclo") {
+            if let t = d.tope {
+                HStack {
+                    Text("Llevas \(Formato.dinero(t.gastado)) de \(Formato.dinero(t.tope))").font(.subheadline)
+                    Spacer()
+                    Text("\(t.porcentaje) %").font(.subheadline.weight(.semibold))
+                }
+                barra(t.gastado, t.tope, alto: 10)
+                Text(t.queda < 0 ? "Te pasaste por \(Formato.dinero(-t.queda))" : "Te quedan \(Formato.dinero(t.queda)) · \(Formato.dinero(t.porDia)) por día (\(t.diasRestantes + 1) días)")
+                    .font(.caption).foregroundStyle(t.queda < 0 ? .red : .secondary)
+            }
+            ForEach(d.presupuestos ?? []) { p in
+                NavigationLink(value: Ruta.compromiso(p.id)) {
+                    VStack(alignment: .leading, spacing: 3) {
+                        HStack {
+                            Text(p.descripcion).font(.subheadline)
+                            Spacer()
+                            Text(p.queda < 0 ? "te pasaste \(Formato.dinero(-p.queda))" : "quedan \(Formato.dinero(p.queda))").font(.caption).foregroundStyle(p.queda < 0 ? .red : .secondary)
+                        }
+                        barra(p.gastado + p.comprometido, p.monto, alto: 6)
+                        Text("\(Formato.dinero(p.gastado)) de \(Formato.dinero(p.monto))" + (p.comprometido > 0 ? " + \(Formato.dinero(p.comprometido)) por pagar" : ""))
+                            .font(.caption2).foregroundStyle(.secondary)
+                    }.padding(.vertical, 3).contentShape(Rectangle())
+                }.buttonStyle(.plain)
             }
         }
     }
