@@ -159,6 +159,10 @@ struct CompromisoDetalleView: View {
                     if (p.movimientos ?? []).isEmpty { Text("Aún no hay gastos de esta categoría en el ciclo.").foregroundStyle(.secondary) }
                     ForEach(p.movimientos ?? [], id: \.clave) { mv in
                         FilaValor(etiqueta: "\(Formato.fechaCorta(mv.fecha)) · \(mv.descripcion) (\(mv.origen))", valor: Formato.dinero(mv.monto))
+                        if let cobrado = mv.cobrado {
+                            Text("De \(Formato.dinero((Double(mv.monto) ?? 0) + (Double(cobrado) ?? 0))): \(Formato.dinero(cobrado)) ya te pagaron")
+                                .font(.caption).foregroundStyle(.secondary)
+                        }
                     }
                 }
             }

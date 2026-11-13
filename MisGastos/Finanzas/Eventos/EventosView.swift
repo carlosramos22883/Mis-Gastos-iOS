@@ -101,7 +101,7 @@ struct EventoDetalleView: View {
                     ForEach(e.participantes) { p in TarjetaParticipante(evento: e, p: p, cobrar: { cobro = p }, yaPago: { pagado = p }, quitar: { quitar = p }) }
                     Seccion("Consumos") {
                         ForEach(e.consumos) { c in
-                            FilaValor(etiqueta: "\(c.cantidad) × \(c.descripcion) (\(Formato.dinero(c.precio)))", valor: Formato.dinero(c.total))
+                            FilaValor(etiqueta: c.compartido ? "\(c.descripcion) (compartido entre \(c.cantidades.filter { $0 > 0 }.count))" : "\(c.cantidad) × \(c.descripcion) (\(Formato.dinero(c.precio)))", valor: Formato.dinero(c.total))
                         }
                     }
                     if let url = e.fotoUrl {
@@ -208,7 +208,7 @@ private struct TarjetaParticipante: View {
             }
             if abierto {
                 ForEach(p.detalle, id: \.self) { d in
-                    FilaValor(etiqueta: "\(d.cantidad > 1 ? "\(d.cantidad)× " : "")\(d.descripcion)", valor: Formato.dinero(d.monto))
+                    FilaValor(etiqueta: d.compartido ? "\(d.descripcion) (compartido)" : "\(d.cantidad > 1 ? "\(d.cantidad)× " : "")\(d.descripcion)", valor: Formato.dinero(d.monto))
                 }
                 if num(p.propina) > 0 { FilaValor(etiqueta: "Propina", valor: Formato.dinero(p.propina)) }
                 if num(p.festejo) > 0 { FilaValor(etiqueta: "Lo del cumpleañero", valor: Formato.dinero(p.festejo)) }

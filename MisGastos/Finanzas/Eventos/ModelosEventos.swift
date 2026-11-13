@@ -52,15 +52,16 @@ nonisolated struct ParticipanteEvento: Decodable, Identifiable, Hashable {
 }
 
 nonisolated struct CobroEvento: Decodable, Hashable, Identifiable { let id: Int; let fecha: String; let monto: String; let destino: String? }
-nonisolated struct DetalleEvento: Decodable, Hashable { let descripcion: String; let cantidad: Int; let precio: String; let monto: String }
-nonisolated struct ConsumoEvento: Decodable, Identifiable { let id: Int; let descripcion: String; let precio: String; let cantidad: Int; let total: String; let cantidades: [Int] }
+nonisolated struct DetalleEvento: Decodable, Hashable { let descripcion: String; let cantidad: Int; let precio: String; let monto: String; let compartido: Bool }
+/// compartido: el precio es el del producto completo y se divide entre quienes comieron según sus porciones (cantidades). montos: lo de cada participante.
+nonisolated struct ConsumoEvento: Decodable, Identifiable { let id: Int; let descripcion: String; let precio: String; let compartido: Bool; let cantidad: Int; let total: String; let cantidades: [Int]; let montos: [String] }
 nonisolated struct OpcionEvento: Decodable, Hashable { let valor: String; let etiqueta: String }
 /// participantes: "miembro:{id}" o id de contacto; origenes: de dónde pagar; destinos: a dónde entra un cobro.
 nonisolated struct OpcionesEvento: Decodable { let participantes: [OpcionEvento]; let origenes: [OpcionEvento]; let destinos: [OpcionEvento] }
 
 nonisolated struct ParticipanteEventoCuerpo: Encodable { let quien: String; let esFestejado: Bool }
-/// cantidades: cuántos pidió cada participante, en el orden de participantes.
-nonisolated struct ConsumoEventoCuerpo: Encodable { let descripcion: String; let precio: String; let cantidades: [Int] }
+/// cantidades: cuántos pidió cada participante, en el orden de participantes (si es compartido, sus porciones; el precio es el del producto completo).
+nonisolated struct ConsumoEventoCuerpo: Encodable { let descripcion: String; let precio: String; let compartido: Bool; let cantidades: [Int] }
 nonisolated struct EventoCuerpo: Encodable {
     let nombre: String
     let fecha: String
@@ -80,8 +81,8 @@ nonisolated struct PagadoEventoCuerpo: Encodable { let fecha: String; let origen
 /// Reparto en centavos, igual que EventoService::calcular del servidor (la suma de las partes es exactamente el total).
 enum CalculoEvento {
     struct Persona { let uid: Int; let festejado: Bool }
-    /// Un producto: precio en centavos y cuántos pidió cada uno (uid → cantidad).
-    struct Producto { let centavos: Int; let cant: [Int: Int] }
+    /// Un producto: precio en centavos y cuántos pidió cada uno (uid → cantidad). Compartido: el precio se divide según las porciones.
+    struct Producto { let centavos: Int; var compartido = false; let cant: [Int: Int] }
     struct Parte { let consumo: Int; let propina: Int; let festejo: Int; let total: Int }
     struct Reparto { let subtotal: Int; let propina: Int; let total: Int; let festejo: Int; let por: [Int: Parte] }
 
@@ -107,10 +108,18 @@ enum CalculoEvento {
         return partes
     }
 
+    /// Centavos de un producto para cada uno: cantidad × precio, o si es compartido su precio dividido según las porciones.
+    static func montos(_ producto: Producto, _ uids: [Int]) -> [Int: Int] {
+        let cantidades = uids.map { ($0, max(0, producto.cant[$0] ?? 0)) }.filter { $0.1 > 0 }
+        if producto.compartido { return repartir(producto.centavos, cantidades.map { ($0.0, Double($0.1)) }) }
+        return Dictionary(uniqueKeysWithValues: cantidades.map { ($0.0, $0.1 * producto.centavos) })
+    }
+
     /// Propina: porcentaje del consumo de cada uno o un monto fijo dividido entre todos. Lo de los festejados se reparte entre los demás.
     static func calcular(_ personas: [Persona], _ productos: [Producto], propinaTipo: String, propinaValor: String) -> Reparto {
         let uids = personas.map(\.uid)
-        let consumo = Dictionary(uniqueKeysWithValues: uids.map { u in (u, productos.reduce(0) { $0 + max(0, $1.cant[u] ?? 0) * $1.centavos }) })
+        let celdas = productos.map { montos($0, uids) }
+        let consumo = Dictionary(uniqueKeysWithValues: uids.map { u in (u, celdas.reduce(0) { $0 + ($1[u] ?? 0) }) })
         let subtotal = consumo.values.reduce(0, +)
         let valor = Double(propinaValor) ?? 0
         var propina = 0

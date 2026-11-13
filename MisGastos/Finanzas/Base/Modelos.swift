@@ -154,8 +154,10 @@ nonisolated struct PresupuestoDetalle: Decodable, Hashable {
     let movimientos: [MovimientoPresupuesto]?
 }
 /// Un gasto que descuenta el presupuesto; origen = de dónde salió (Efectivo, la cuenta o la tarjeta).
+/// cobrado: si es el pago de un evento, lo que ya pagaron los contactos (monto ya viene sin eso).
 nonisolated struct MovimientoPresupuesto: Decodable, Hashable, Identifiable {
     let clase: String; let id: Int; let fecha: String; let descripcion: String; let origen: String; let monto: String
+    var cobrado: String? = nil
     var clave: String { "\(clase)-\(id)" }
 }
 

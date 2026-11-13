@@ -15,7 +15,8 @@ struct FormularioEvento: View {
 
     struct FilaPersona: Identifiable { let id: Int; var quien: String; var nuevo = ""; var festejado = false }
     struct FilaProducto: Identifiable {
-        let id: Int; var descripcion = ""; var precio = ""; var cant: [Int: String] = [:]
+        /// compartido: el precio es el del producto completo y cant son las porciones de cada uno.
+        let id: Int; var descripcion = ""; var precio = ""; var compartido = false; var cant: [Int: String] = [:]
         func cantidad(_ uid: Int) -> Int { max(0, Int(cant[uid] ?? "") ?? 0) }
     }
 
@@ -46,9 +47,16 @@ struct FormularioEvento: View {
     private var hayPropina: Bool { propinaTipo != "ninguna" }
     private var hayFestejo: Bool { personas.contains(where: \.festejado) }
     private var tieneFoto: Bool { fotoNueva != nil || (evento?.fotoUrl != nil && !quitarFoto) }
+    private func producto(_ p: FilaProducto) -> CalculoEvento.Producto {
+        .init(centavos: Int(((Double(p.precio) ?? 0) * 100).rounded()), compartido: p.compartido, cant: Dictionary(uniqueKeysWithValues: personas.map { ($0.id, p.cantidad($0.id)) }))
+    }
+
+    /// Producto compartido: todos comieron de él (una porción cada uno).
+    private func todosComieron() -> [Int: String] { Dictionary(uniqueKeysWithValues: personas.map { ($0.id, "1") }) }
+
     private var reparto: CalculoEvento.Reparto {
         CalculoEvento.calcular(personas.map { .init(uid: $0.id, festejado: $0.festejado) },
-                               productos.map { p in .init(centavos: Int(((Double(p.precio) ?? 0) * 100).rounded()), cant: Dictionary(uniqueKeysWithValues: personas.map { ($0.id, p.cantidad($0.id)) })) },
+                               productos.map { producto($0) },
                                propinaTipo: propinaTipo, propinaValor: propinaValor)
     }
 
@@ -95,14 +103,24 @@ struct FormularioEvento: View {
 
                 Section {
                     ForEach($productos) { $c in
-                        HStack {
-                            TextField("Producto", text: $c.descripcion)
-                            CampoMonto(etiqueta: "Precio", valor: $c.precio).frame(width: 110)
+                        VStack(alignment: .leading, spacing: 6) {
+                            HStack {
+                                TextField("Producto", text: $c.descripcion)
+                                CampoMonto(etiqueta: c.compartido ? "Precio total" : "Precio", valor: $c.precio).frame(width: 110)
+                            }
+                            HStack {
+                                Toggle("Compartido", isOn: Binding(get: { c.compartido }, set: { valor in
+                                    c.compartido = valor
+                                    if valor && personas.allSatisfy({ c.cantidad($0.id) == 0 }) { c.cant = todosComieron() }
+                                })).font(.caption).fixedSize()
+                                Spacer()
+                                if c.compartido { Button("Todos comieron") { c.cant = todosComieron() }.font(.caption).buttonStyle(.borderless) }
+                            }
                         }
                     }
                     .onDelete { productos.remove(atOffsets: $0) }
                     Button { productos.append(FilaProducto(id: siguiente)); siguiente += 1 } label: { Label("Agregar producto", systemImage: "plus") }
-                } header: { Text("Productos") } footer: { Text("Con su precio, como en la cuenta (ej. Corona $2.50). Desliza para quitar.") }
+                } header: { Text("Productos") } footer: { Text("Con su precio, como en la cuenta (ej. Corona $2.50). Si comieron de un mismo plato (ej. una bandeja), márcalo como compartido: pon su precio total y un 1 a cada quien comió (2 si comió el doble). Desliza para quitar.") }
 
                 // Como la hoja: una fila por persona, una columna por producto; en cada celda, cuántos pidió
                 Section {
@@ -198,13 +216,18 @@ struct FormularioEvento: View {
                         VStack(spacing: 0) {
                             VStack(alignment: .leading, spacing: 0) {
                                 Text(c.descripcion.isEmpty ? "Producto" : c.descripcion).font(.caption2).lineLimit(2)
-                                Text(Formato.dinero(c.precio)).font(.caption2).foregroundStyle(.secondary)
+                                Text(Formato.dinero(c.precio) + (c.compartido ? " ÷" : "")).font(.caption2).foregroundStyle(.secondary)
                             }.frame(width: Self.anchoProducto - 6, height: Self.altoFila + 8, alignment: .bottomLeading)
+                            let montos = c.compartido ? CalculoEvento.montos(producto(c), personas.map(\.id)) : [:]
                             ForEach(personas) { p in
                                 TextField("0", text: Binding(get: { c.cant[p.id] ?? "" }, set: { c.cant[p.id] = String($0.filter(\.isNumber).prefix(3)) }))
                                     .keyboardType(.numberPad).multilineTextAlignment(.center)
                                     .frame(width: Self.anchoProducto - 10, height: Self.altoFila - 8)
                                     .background(RoundedRectangle(cornerRadius: 6).stroke(Color(.separator)))
+                                    .overlay(alignment: .bottom) {
+                                        // Producto compartido: lo que le toca de él
+                                        if let m = montos[p.id] { Text(Formato.dinero(Double(m) / 100)).font(.system(size: 9)).foregroundStyle(.secondary).padding(.bottom, 1) }
+                                    }
                                     .frame(width: Self.anchoProducto, height: Self.altoFila)
                             }
                             let suma = personas.reduce(0) { $0 + c.cantidad($1.id) }
@@ -244,7 +267,7 @@ struct FormularioEvento: View {
             pagador = e.pagador?.id
             let ids = e.participantes.map(\.id)
             productos = e.consumos.map { c in
-                FilaProducto(id: -c.id, descripcion: c.descripcion, precio: c.precio,
+                FilaProducto(id: -c.id, descripcion: c.descripcion, precio: c.precio, compartido: c.compartido,
                              cant: Dictionary(uniqueKeysWithValues: zip(ids, c.cantidades).filter { $0.1 > 0 }.map { ($0.0, String($0.1)) }))
             }
             propinaTipo = e.propinaTipo; propinaValor = e.propinaTipo == "ninguna" ? "" : e.propinaValor
@@ -270,7 +293,7 @@ struct FormularioEvento: View {
         if productos.isEmpty || productos.contains(where: { $0.descripcion.trimmingCharacters(in: .whitespaces).isEmpty || !Formato.montoValido($0.precio) }) {
             e["consumos"] = "Cada producto necesita nombre y precio."
         } else if let vacio = productos.first(where: { p in personas.allSatisfy { p.cantidad($0.id) == 0 } }) {
-            e["consumos"] = "Nadie pidió «\(vacio.descripcion)»: anota cuántos pidió cada uno o quítalo."
+            e["consumos"] = vacio.compartido ? "Nadie comió de «\(vacio.descripcion)»: marca a quienes lo compartieron o quítalo." : "Nadie pidió «\(vacio.descripcion)»: anota cuántos pidió cada uno o quítalo."
         }
         if pagaElHogar && origen != "ninguno" && categoriaId == nil { e["categoria_personal_id"] = "Elige la categoría del gasto." }
         errores = e
@@ -282,7 +305,7 @@ struct FormularioEvento: View {
             propinaTipo: propinaTipo, propinaValor: hayPropina ? propinaValor : nil,
             participantes: personas.map { ParticipanteEventoCuerpo(quien: quien($0), esFestejado: $0.festejado) },
             pagador: posicion.firstIndex(of: pagador ?? -1) ?? 0,
-            consumos: productos.map { c in ConsumoEventoCuerpo(descripcion: c.descripcion.trimmingCharacters(in: .whitespaces), precio: c.precio, cantidades: posicion.map { c.cantidad($0) }) },
+            consumos: productos.map { c in ConsumoEventoCuerpo(descripcion: c.descripcion.trimmingCharacters(in: .whitespaces), precio: c.precio, compartido: c.compartido, cantidades: posicion.map { c.cantidad($0) }) },
             origen: pagaElHogar ? origen : nil, categoriaPersonalId: pagaElHogar && origen != "ninguno" ? categoriaId : nil,
             confirmar: confirmado ? true : nil
         )
