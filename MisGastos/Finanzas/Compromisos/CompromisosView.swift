@@ -101,6 +101,10 @@ struct CompromisoDetalleView: View {
     @State private var editando: FormularioCompromiso.Modo?
     @State private var cancelarSerie: Bool?
     @State private var aviso: String?
+    /// Cubrir a mano un presupuesto que se pasó: de qué categorías (mientras la hoja está abierta).
+    @State private var cubrir: ExcesoPresupuesto?
+    /// Repartir lo que le queda a otras categorías (mientras la hoja está abierta).
+    @State private var reparto: ExcesoPresupuesto?
     @Environment(\.dismiss) private var volver
     private let comunes = Comunes.shared
 
@@ -131,6 +135,8 @@ struct CompromisoDetalleView: View {
             Text(cancelarSerie == true ? "Se cancela este pago y ya no se generan los siguientes." : "Los demás pagos de la serie siguen igual.")
         }
         .alert(aviso ?? "", isPresented: Binding(get: { aviso != nil }, set: { if !$0 { aviso = nil } })) { Button("OK") {} }
+        .sheet(item: $cubrir) { e in HojaCubrirPresupuesto(exceso: e, manual: true) { d in Task { await cubrir(d) } } }
+        .sheet(item: $reparto) { e in HojaCubrirPresupuesto(exceso: e, manual: true, repartir: true) { d in Task { await repartir(d) } } }
     }
 
     private func contenido(_ c: Compromiso) -> some View {
@@ -154,6 +160,31 @@ struct CompromisoDetalleView: View {
                     FilaValor(etiqueta: "Gastado", valor: Formato.dinero(p.gastado))
                     if (Double(p.comprometido) ?? 0) > 0 { FilaValor(etiqueta: "Por pagar (compromisos de la categoría)", valor: Formato.dinero(p.comprometido)) }
                     FilaValor(etiqueta: "Queda", valor: Formato.dinero(p.queda), negrita: true)
+                    if (Double(p.queda) ?? 0) < 0 && c.estado == "pendiente" {
+                        Button("Cubrir con otras categorías") { Task { await abrirCubrir() } }
+                    }
+                    if (Double(p.queda) ?? 0) > 0 && c.estado == "pendiente" {
+                        Button("Pasar lo que le queda a otras categorías") { Task { await abrirReparto() } }
+                    }
+                }
+                if let traspasos = p.traspasos, !traspasos.isEmpty {
+                    Section {
+                        ForEach(traspasos) { t in
+                            HStack {
+                                VStack(alignment: .leading) {
+                                    Text(t.recibe ? "Recibió de «\(t.categoria ?? "")»" : "Le pasó a «\(t.categoria ?? "")»")
+                                    Text(t.manual ? "Movido a mano" : "Por el gasto «\(t.gasto ?? "")»").font(.caption).foregroundStyle(.secondary)
+                                }
+                                Spacer()
+                                Text((t.recibe ? "+ " : "− ") + Formato.dinero(t.monto)).foregroundStyle(t.recibe ? .green : .red)
+                            }
+                            .swipeActions {
+                                if t.manual && c.estado == "pendiente" { Button("Deshacer") { Task { await deshacer(t.id) } }.tint(.orange) }
+                            }
+                        }
+                    } header: { Text("Presupuesto movido entre categorías") } footer: {
+                        Text("Base \(Formato.dinero(p.montoBase)) · recibió \(Formato.dinero(p.recibido)) · cedió \(Formato.dinero(p.cedido)). El total del hogar no cambia. Desliza para deshacer uno movido a mano.")
+                    }
                 }
                 Section("Gastos que lo descuentan") {
                     if (p.movimientos ?? []).isEmpty { Text("Aún no hay gastos de esta categoría en el ciclo.").foregroundStyle(.secondary) }
@@ -204,6 +235,42 @@ struct CompromisoDetalleView: View {
             let r: Envoltura<Compromiso> = try await API.shared.get("/compromisos/\(id)")
             compromiso = r.data; error = nil
         } catch { self.error = error.localizedDescription }
+    }
+
+    private func abrirCubrir() async {
+        do {
+            let r: Envoltura<ExcesoPresupuesto?> = try await API.shared.get("/compromisos/\(id)/cubrir")
+            if let e = r.data { cubrir = e } else { aviso = "Este presupuesto no se ha pasado." }
+        } catch { aviso = error.localizedDescription }
+    }
+
+    private func cubrir(_ d: DecisionPresupuesto) async {
+        do {
+            let r: Envoltura<Compromiso> = try await API.shared.post("/compromisos/\(id)/cubrir", CubrirBody(traspasos: d.traspasos ?? []))
+            compromiso = r.data; aviso = "Listo: el presupuesto quedó cubierto."
+        } catch { aviso = error.localizedDescription }
+    }
+
+    private func abrirReparto() async {
+        do {
+            let r: Envoltura<ExcesoPresupuesto?> = try await API.shared.get("/compromisos/\(id)/repartir")
+            if let e = r.data { reparto = e } else { aviso = "A este presupuesto ya no le queda nada." }
+        } catch { aviso = error.localizedDescription }
+    }
+
+    private func repartir(_ d: DecisionPresupuesto) async {
+        do {
+            let r: Envoltura<Compromiso> = try await API.shared.post("/compromisos/\(id)/repartir", CubrirBody(traspasos: d.traspasos ?? []))
+            compromiso = r.data; aviso = "Listo: el presupuesto pasó a las categorías que elegiste."
+        } catch { aviso = error.localizedDescription }
+    }
+
+    private func deshacer(_ traspasoId: Int) async {
+        do {
+            try await API.shared.borrar("/presupuesto-traspasos/\(traspasoId)")
+            aviso = "El presupuesto regresó a su categoría."
+            await cargar()
+        } catch { aviso = error.localizedDescription }
     }
 
     private func cancelar(serie: Bool) async {

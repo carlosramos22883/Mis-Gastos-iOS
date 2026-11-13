@@ -206,6 +206,8 @@ nonisolated struct MovimientoTarjetaBody: Encodable {
     let comentario: String?
     let userId: Int?
     let contactoId: String?
+    var presupuesto: String? = nil
+    var traspasos: [TraspasoBody]? = nil
 }
 
 nonisolated struct TarjetaBody: Encodable {

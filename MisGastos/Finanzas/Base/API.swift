@@ -4,6 +4,8 @@ import Foundation
 nonisolated struct FallaAPI: Error, LocalizedError {
     let mensaje: String
     var campos: [String: String] = [:]
+    /// El gasto pasa su presupuesto (error "presupuesto"): se elige de qué categorías cubrirlo y se reenvía.
+    var presupuesto: ExcesoPresupuesto? = nil
     var errorDescription: String? { mensaje }
 }
 
@@ -117,7 +119,7 @@ final class API {
             let laravel = try? decoder.decode(ErrorLaravel.self, from: datos)
             let campos = (laravel?.errors ?? [:]).compactMapValues { $0.first }
             let mensaje = campos.values.first ?? laravel?.message ?? (codigo == 404 ? "No se encontró el registro." : "Error del servidor (\(codigo)).")
-            throw FallaAPI(mensaje: mensaje, campos: campos)
+            throw FallaAPI(mensaje: mensaje, campos: campos, presupuesto: laravel?.presupuesto)
         }
     }
 
@@ -173,6 +175,7 @@ nonisolated struct Vacio: Codable {}
 private nonisolated struct ErrorLaravel: Decodable {
     let message: String?
     let errors: [String: [String]]?
+    let presupuesto: ExcesoPresupuesto?
 }
 
 /// Respuesta envuelta en "data" (recursos de Laravel).

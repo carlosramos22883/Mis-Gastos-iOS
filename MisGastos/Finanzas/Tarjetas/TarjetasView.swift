@@ -386,6 +386,7 @@ struct FormularioMovTarjeta: View {
     @State private var error: String?
     @State private var guardando = false
     @State private var confirmarBorrar = false
+    @State private var exceso: ExcesoPresupuesto?
     private let comunes = Comunes.shared
     private var primerDia: Date { desde.map { Formato.fechaLocal($0) } ?? .distantPast }
 
@@ -442,6 +443,7 @@ struct FormularioMovTarjeta: View {
                 Button("Eliminar", role: .destructive) { Task { await eliminar() } }
             }
             .onAppear(perform: llenar)
+            .sheet(item: $exceso) { e in HojaCubrirPresupuesto(exceso: e) { d in Task { await guardar(d) } } }
         }
     }
 
@@ -453,7 +455,7 @@ struct FormularioMovTarjeta: View {
         contactoId = m.contacto?.id; comentario = m.comentario ?? ""
     }
 
-    private func guardar() async {
+    private func guardar(_ decision: DecisionPresupuesto? = nil) async {
         var e: [String: String] = [:]
         if descripcion.trimmingCharacters(in: .whitespaces).isEmpty { e["descripcion"] = "Escribe una descripción." }
         if !Formato.montoValido(monto) { e["monto"] = "Monto positivo con máximo dos decimales." }
@@ -465,7 +467,8 @@ struct FormularioMovTarjeta: View {
         let nota = comentario.trimmingCharacters(in: .whitespaces)
         let cuerpo = MovimientoTarjetaBody(tipo: tipo, descripcion: descripcion.trimmingCharacters(in: .whitespaces), monto: monto, fecha: Formato.textoLocal(fecha),
                                            cuotas: tipo == "compra" ? nCuotas : nil, categoriaPersonalId: tipo == "credito" ? nil : categoriaId,
-                                           comentario: nota.isEmpty ? nil : nota, userId: userId, contactoId: contactoId.map(String.init))
+                                           comentario: nota.isEmpty ? nil : nota, userId: userId, contactoId: contactoId.map(String.init),
+                                           presupuesto: decision?.modo ?? "revisar", traspasos: decision?.traspasos)
         do {
             if let m = movimiento {
                 try await API.shared.enviar("PUT", "/tarjetas/\(tarjetaId)/movimientos/\(m.id)", cuerpo)
@@ -474,7 +477,9 @@ struct FormularioMovTarjeta: View {
             }
             alGuardar(movimiento == nil ? "Movimiento registrado." : "Movimiento actualizado.")
             cerrar()
-        } catch let f as FallaAPI { errores = f.campos; error = f.mensaje } catch { self.error = error.localizedDescription }
+        } catch let f as FallaAPI {
+            if let p = f.presupuesto { exceso = p } else { errores = f.campos; error = f.mensaje }
+        } catch { self.error = error.localizedDescription }
         guardando = false
     }
 

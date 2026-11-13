@@ -90,6 +90,9 @@ nonisolated struct MovimientoEfectivoBody: Encodable {
     let categoriaPersonalId: Int?
     let userId: Int?
     let contactoId: String?
+    /// revisar | pasarme | cubrir (con traspasos): ver ExcesoPresupuesto
+    var presupuesto: String? = nil
+    var traspasos: [TraspasoBody]? = nil
 }
 
 // MARK: - Categorías, hogar y contactos
@@ -149,9 +152,16 @@ nonisolated struct Compromiso: Decodable, Identifiable, Hashable {
     let presupuesto: PresupuestoDetalle?
 }
 
+/// monto = montoBase + recibido − cedido (presupuesto movido entre categorías en el ciclo).
 nonisolated struct PresupuestoDetalle: Decodable, Hashable {
     let monto: String; let gastado: String; let comprometido: String; let queda: String
+    var montoBase: String? = nil; var recibido: String? = nil; var cedido: String? = nil
     let movimientos: [MovimientoPresupuesto]?
+    var traspasos: [TraspasoPresupuesto]? = nil
+}
+/// Presupuesto movido: recibe = llegó a este (si no, salió hacia categoria); manual = movido a mano (se puede deshacer).
+nonisolated struct TraspasoPresupuesto: Decodable, Hashable, Identifiable {
+    let id: Int; let recibe: Bool; let categoria: String?; let monto: String; let manual: Bool; let gasto: String?; let fecha: String
 }
 /// Un gasto que descuenta el presupuesto; origen = de dónde salió (Efectivo, la cuenta o la tarjeta).
 /// cobrado: si es el pago de un evento, lo que ya pagaron los contactos (monto ya viene sin eso).

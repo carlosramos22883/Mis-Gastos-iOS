@@ -174,6 +174,7 @@ struct FormularioEfectivo: View {
     @State private var error: String?
     @State private var guardando = false
     @State private var confirmarBorrar = false
+    @State private var exceso: ExcesoPresupuesto?
     private let comunes = Comunes.shared
     /// Primera fecha permitida: el inicio del ciclo actual.
     private var desde: Date { inicioCiclo.map { Formato.fechaLocal($0) } ?? .distantPast }
@@ -219,6 +220,7 @@ struct FormularioEfectivo: View {
                 Button("Eliminar", role: .destructive) { Task { await eliminar() } }
             }
             .onAppear(perform: llenar)
+            .sheet(item: $exceso) { e in HojaCubrirPresupuesto(exceso: e) { d in Task { await guardar(d) } } }
         }
     }
 
@@ -229,7 +231,7 @@ struct FormularioEfectivo: View {
         categoriaId = m.categoria?.id; userId = m.userId; contactoId = m.contacto?.id
     }
 
-    private func guardar() async {
+    private func guardar(_ decision: DecisionPresupuesto? = nil) async {
         var e: [String: String] = [:]
         if descripcion.trimmingCharacters(in: .whitespaces).isEmpty { e["descripcion"] = "Escribe una descripción." }
         if !Formato.montoValido(monto) { e["monto"] = "Monto positivo con máximo dos decimales." }
@@ -238,7 +240,8 @@ struct FormularioEfectivo: View {
         guard e.isEmpty else { return }
         guardando = true
         let cuerpo = MovimientoEfectivoBody(tipo: tipo, descripcion: descripcion.trimmingCharacters(in: .whitespaces), monto: monto,
-                                            fecha: Formato.textoLocal(fecha), categoriaPersonalId: categoriaId, userId: userId, contactoId: contactoId.map(String.init))
+                                            fecha: Formato.textoLocal(fecha), categoriaPersonalId: categoriaId, userId: userId, contactoId: contactoId.map(String.init),
+                                            presupuesto: decision?.modo ?? "revisar", traspasos: decision?.traspasos)
         do {
             if let m = movimiento {
                 try await API.shared.enviar("PUT", "\(base)/\(m.id)", cuerpo)
@@ -248,7 +251,7 @@ struct FormularioEfectivo: View {
             alGuardar(movimiento == nil ? "Movimiento registrado." : "Movimiento actualizado.")
             cerrar()
         } catch let f as FallaAPI {
-            errores = f.campos; error = f.mensaje
+            if let p = f.presupuesto { exceso = p } else { errores = f.campos; error = f.mensaje }
         } catch { self.error = error.localizedDescription }
         guardando = false
     }

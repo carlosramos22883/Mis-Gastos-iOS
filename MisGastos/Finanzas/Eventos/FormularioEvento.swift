@@ -40,6 +40,9 @@ struct FormularioEvento: View {
     @State private var error: String?
     @State private var guardando = false
     @State private var pregunta: String?
+    /// El pago pasa el presupuesto de su categoría (aviso) y lo que se eligió (se mantiene si luego se confirma un sobregiro).
+    @State private var exceso: ExcesoPresupuesto?
+    @State private var decision: DecisionPresupuesto?
     @State private var listo = false
     private let comunes = Comunes.shared
 
@@ -195,6 +198,7 @@ struct FormularioEvento: View {
                 Button("Cancelar", role: .cancel) {}
                 Button("Sí, registrar") { Task { await guardar(confirmado: true) } }
             } message: { Text(pregunta ?? "") }
+            .sheet(item: $exceso) { e in HojaCubrirPresupuesto(exceso: e) { d in decision = d; Task { await guardar() } } }
             }
         }
     }
@@ -307,7 +311,8 @@ struct FormularioEvento: View {
             pagador: posicion.firstIndex(of: pagador ?? -1) ?? 0,
             consumos: productos.map { c in ConsumoEventoCuerpo(descripcion: c.descripcion.trimmingCharacters(in: .whitespaces), precio: c.precio, compartido: c.compartido, cantidades: posicion.map { c.cantidad($0) }) },
             origen: pagaElHogar ? origen : nil, categoriaPersonalId: pagaElHogar && origen != "ninguno" ? categoriaId : nil,
-            confirmar: confirmado ? true : nil
+            confirmar: confirmado ? true : nil,
+            presupuesto: decision?.modo ?? "revisar", traspasos: decision?.traspasos
         )
         guardando = true
         defer { guardando = false }
@@ -323,7 +328,8 @@ struct FormularioEvento: View {
             } catch { self.error = "El evento se guardó, pero la foto no: \(error.localizedDescription)" }
             alGuardar(r.data); cerrar()
         } catch let f as FallaAPI {
-            if let p = f.campos["confirmar"] { pregunta = p } else { errores = f.campos; error = f.mensaje }
+            if let p = f.presupuesto { decision = nil; exceso = p }
+            else if let p = f.campos["confirmar"] { pregunta = p } else { errores = f.campos; error = f.mensaje }
         } catch { self.error = error.localizedDescription }
     }
 }

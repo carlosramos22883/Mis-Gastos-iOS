@@ -74,6 +74,9 @@ nonisolated struct EventoCuerpo: Encodable {
     let origen: String?
     let categoriaPersonalId: Int?
     var confirmar: Bool?
+    /// revisar | pasarme | cubrir (con traspasos)
+    var presupuesto: String? = nil
+    var traspasos: [TraspasoBody]? = nil
 }
 nonisolated struct CobroEventoCuerpo: Encodable { let monto: String; let fecha: String; let destino: String }
 nonisolated struct PagadoEventoCuerpo: Encodable { let fecha: String; let origen: String?; let categoriaPersonalId: Int?; var confirmar: Bool? }
