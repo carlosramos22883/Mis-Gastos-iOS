@@ -34,9 +34,40 @@ nonisolated struct Dashboard: Decodable {
     /// Tope de gasto del ciclo (nil = sin tope) y presupuestos (súper, gasolina…) del ciclo
     let tope: TopeGasto?
     let presupuestos: [PresupuestoResumen]?
+    /// Cuota del mes de cada préstamo frente a lo pagado, y lo sacado y pagado entre tarjetas en el ciclo
+    var prestamosCiclo: PrestamosCiclo? = nil
+    var avancesCiclo: AvancesCiclo? = nil
 }
 
-nonisolated struct TopeGasto: Decodable { let tope: Double; let gastado: Double; let queda: Double; let porDia: Double; let porcentaje: Int; let diasRestantes: Int }
+/// queda = tope − gastado − comprometido (lo por pagar). fuera = categorías gastadas sin presupuesto.
+nonisolated struct TopeGasto: Decodable {
+    let tope: Double; let gastado: Double; var comprometido: Double? = nil; let queda: Double; let porDia: Double; let porcentaje: Int; let diasRestantes: Int
+    var presupuestado: Double? = nil; var sinAsignar: Double? = nil; var fuera: [FueraDePresupuesto]? = nil; var fueraTotal: Double? = nil
+}
+/// Una categoría con gastos (o por pagar) sin presupuesto en el ciclo, con esos gastos y compromisos
+nonisolated struct FueraDePresupuesto: Decodable, Identifiable {
+    var id: String { nombre }; let nombre: String; var categoriaId: Int? = nil; let gastado: Double; let comprometido: Double
+    var movimientos: [MovimientoFuera]? = nil; var pendientes: [PendienteFuera]? = nil
+}
+/// clase: efectivo | cuenta | tarjeta; lugarId = la cuenta o la tarjeta (nil en efectivo)
+nonisolated struct MovimientoFuera: Decodable, Identifiable {
+    var id: String { "\(clase)-\(movimientoId)" }; let clase: String; let movimientoId: Int; let lugarId: Int?; let fecha: String; let descripcion: String; let origen: String; let monto: Double
+    enum CodingKeys: String, CodingKey { case clase, movimientoId = "id", lugarId, fecha, descripcion, origen, monto }
+}
+/// Un compromiso por pagar de la categoría
+nonisolated struct PendienteFuera: Decodable, Identifiable { let id: Int; let descripcion: String; let fecha: String?; let monto: Double }
+/// cuotas = préstamos con cuota; pagadas = cuántas ya se cubrieron en el ciclo
+nonisolated struct PrestamosCiclo: Decodable { let lista: [PrestamoCiclo]; var cuotas: Int? = nil; var pagadas: Int? = nil; let cuota: Double; let pagado: Double; let extra: Double; let falta: Double }
+/// pagada = cubrió la cuota; extra = lo pagado de más (sin la mora); falta = lo que aún no se paga; fecha = último pago del ciclo
+nonisolated struct PrestamoCiclo: Decodable, Identifiable {
+    let id: Int; let nombre: String; let cuota: Double; let pagado: Double; var mora: Double? = nil; let extra: Double; let falta: Double; var pagada: Bool? = nil; var fecha: String? = nil
+}
+/// total = todo lo sacado de las tarjetas en el ciclo (0 = la sección no se muestra)
+nonisolated struct AvancesCiclo: Decodable { let lista: [TarjetaMovida]; let flujos: [FlujoTarjeta]; var total: Double? = nil }
+/// sacado = avances + pagos a otras tarjetas hechos con esta; recibido = lo que se le pagó
+nonisolated struct TarjetaMovida: Decodable, Identifiable { let id: Int; let nombre: String; let color: String?; let avances: Double; let pagosAOtras: Double; let sacado: Double; let recibido: Double }
+/// tipo: avance | pago
+nonisolated struct FlujoTarjeta: Decodable, Hashable { let de: String; let a: String; let monto: Double; let tipo: String }
 /// queda < 0 = se pasó; comprometido = compromisos de su categoría aún por pagar (ya apartados)
 nonisolated struct PresupuestoResumen: Decodable, Identifiable {
     let id: Int; let descripcion: String; let color: String?; let monto: Double; let gastado: Double; let comprometido: Double; let queda: Double

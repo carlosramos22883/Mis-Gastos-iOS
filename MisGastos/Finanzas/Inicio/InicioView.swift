@@ -57,6 +57,9 @@ struct InicioView: View {
                 .background(Color.accentColor.opacity(0.15), in: RoundedRectangle(cornerRadius: 16))
 
                 if d.tope != nil || !(d.presupuestos ?? []).isEmpty { GastoDelCiclo(d: d) }
+                if let pc = d.prestamosCiclo, !pc.lista.isEmpty { PrestamosDelCiclo(pc: pc) }
+                // Solo si en el ciclo se sacó algo de una tarjeta (avance o pago de otra tarjeta)
+                if let av = d.avancesCiclo, (av.total ?? 0) > 0 { AvancesEntreTarjetas(av: av) }
 
                 if !d.alertas.isEmpty {
                     Seccion("Avisos") {
@@ -94,17 +97,6 @@ struct InicioView: View {
                     }
                 }
 
-                Seccion("Tarjetas de crédito") {
-                    FilaValor(etiqueta: "Disponible", valor: Formato.dinero(d.tarjetasTotales.disponible), negrita: true)
-                    FilaValor(etiqueta: "Por pagar (estados de cuenta)", valor: Formato.dinero(d.tarjetasTotales.porPagar))
-                    FilaValor(etiqueta: "Disponible para avances", valor: Formato.dinero(d.tarjetasTotales.disponibleAvances))
-                    ScrollView(.horizontal, showsIndicators: false) {
-                        HStack(spacing: 8) {
-                            ForEach(d.tarjetas) { t in NavigationLink(value: Ruta.tarjeta(t.id)) { tarjetaChica(t) }.buttonStyle(.plain) }
-                        }
-                    }
-                }
-
                 Seccion("Cuentas · \(Formato.dinero(d.totalCuentas))") {
                     ForEach(d.cuentas) { c in
                         NavigationLink(value: Ruta.cuenta(c.id)) {
@@ -137,6 +129,17 @@ struct InicioView: View {
                 }
 
                 if !d.gastosPorCategoria.isEmpty { gastos(d) }
+
+                Seccion("Tarjetas de crédito") {
+                    FilaValor(etiqueta: "Disponible", valor: Formato.dinero(d.tarjetasTotales.disponible), negrita: true)
+                    FilaValor(etiqueta: "Por pagar (estados de cuenta)", valor: Formato.dinero(d.tarjetasTotales.porPagar))
+                    FilaValor(etiqueta: "Disponible para avances", valor: Formato.dinero(d.tarjetasTotales.disponibleAvances))
+                    ScrollView(.horizontal, showsIndicators: false) {
+                        HStack(spacing: 8) {
+                            ForEach(d.tarjetas) { t in NavigationLink(value: Ruta.tarjeta(t.id)) { tarjetaChica(t) }.buttonStyle(.plain) }
+                        }
+                    }
+                }
             }
             .padding(16)
         }
@@ -209,13 +212,21 @@ private struct GastoDelCiclo: View {
         Seccion("Gasto del ciclo") {
             if let t = d.tope {
                 HStack {
-                    Text("Llevas \(Formato.dinero(t.gastado)) de \(Formato.dinero(t.tope))").font(.subheadline)
+                    Text("Llevas \(Formato.dinero(t.gastado))" + ((t.comprometido ?? 0) > 0 ? " + \(Formato.dinero(t.comprometido ?? 0)) por pagar" : "") + " de \(Formato.dinero(t.tope))").font(.subheadline)
                     Spacer()
                     Text("\(t.porcentaje) %").font(.subheadline.weight(.semibold))
                 }
-                barra(t.gastado, t.tope, alto: 10)
+                barra(t.gastado + (t.comprometido ?? 0), t.tope, alto: 10)
                 Text(t.queda < 0 ? "Te pasaste por \(Formato.dinero(-t.queda))" : "Te quedan \(Formato.dinero(t.queda)) · \(Formato.dinero(t.porDia)) por día (\(t.diasRestantes + 1) días)")
                     .font(.caption).foregroundStyle(t.queda < 0 ? .red : .secondary)
+                Text("Cuenta lo gastado y lo que falta pagar en el ciclo, menos las cuotas de préstamos.").font(.caption2).foregroundStyle(.secondary)
+                if let fuera = t.fuera, !fuera.isEmpty {
+                    Text("Fuera de presupuesto: \(Formato.dinero(t.fueraTotal ?? 0)) (" + fuera.map { "\($0.nombre) \(Formato.dinero($0.gastado + $0.comprometido))" }.joined(separator: ", ") + "). Sale del tope sin descontarse de ningún presupuesto.")
+                        .font(.caption2).foregroundStyle(Semantica.aviso)
+                }
+                if let s = t.sinAsignar, abs(s) >= 0.01 {
+                    Text(s > 0 ? "Sin asignar a un presupuesto: \(Formato.dinero(s))." : "Los presupuestos suman \(Formato.dinero(-s)) más que el tope.").font(.caption2).foregroundStyle(.secondary)
+                }
             }
             ForEach(d.presupuestos ?? []) { p in
                 NavigationLink(value: Ruta.compromiso(p.id)) {
@@ -230,6 +241,156 @@ private struct GastoDelCiclo: View {
                             .font(.caption2).foregroundStyle(.secondary)
                     }.padding(.vertical, 3).contentShape(Rectangle())
                 }.buttonStyle(.plain)
+            }
+            // Lo gastado en categorías sin presupuesto también sale del tope: en rojo, junto a los demás
+            ForEach(d.tope?.fuera ?? []) { f in FueraDePresupuestoFila(f: f) }
+        }
+    }
+}
+
+/// Una categoría sin presupuesto, en rojo; al tocarla muestra sus gastos y lo por pagar, y cada uno abre donde está.
+private struct FueraDePresupuestoFila: View {
+    let f: FueraDePresupuesto
+    @State private var abierto = false
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 3) {
+            Button { withAnimation { abierto.toggle() } } label: {
+                VStack(alignment: .leading, spacing: 3) {
+                    HStack {
+                        Text(f.nombre).font(.subheadline) + Text(" (sin presupuesto)").font(.caption).foregroundStyle(.secondary)
+                        Spacer()
+                        Text("te pasaste \(Formato.dinero(f.gastado + f.comprometido))").font(.caption).foregroundStyle(.red)
+                        Image(systemName: abierto ? "chevron.up" : "chevron.down").font(.caption2).foregroundStyle(.tertiary)
+                    }
+                    Capsule().fill(Color.red).frame(height: 6)
+                    Text(Formato.dinero(f.gastado) + (f.comprometido > 0 ? " + \(Formato.dinero(f.comprometido)) por pagar" : "")).font(.caption2).foregroundStyle(.secondary)
+                }.contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityHint(abierto ? "Oculta sus gastos" : "Muestra sus gastos")
+            if abierto {
+                ForEach(f.movimientos ?? []) { m in
+                    if let ruta = ruta(m) {
+                        NavigationLink(value: ruta) { fila("\(Formato.fechaCorta(m.fecha)) · \(m.descripcion) (\(m.origen))", m.monto, flecha: true) }.buttonStyle(.plain)
+                    } else {
+                        fila("\(Formato.fechaCorta(m.fecha)) · \(m.descripcion) (\(m.origen))", m.monto, flecha: false)
+                    }
+                }
+                ForEach(f.pendientes ?? []) { c in
+                    NavigationLink(value: Ruta.compromiso(c.id)) {
+                        fila("\(c.fecha.map { Formato.fechaCorta($0) } ?? "Sin fecha") · \(c.descripcion) (por pagar)", c.monto, flecha: true)
+                    }.buttonStyle(.plain)
+                }
+            }
+        }.padding(.vertical, 3)
+    }
+
+    private func ruta(_ m: MovimientoFuera) -> Ruta? {
+        switch m.clase {
+        case "cuenta": m.lugarId.map { Ruta.cuenta($0) }
+        case "tarjeta": m.lugarId.map { Ruta.tarjeta($0) }
+        default: nil
+        }
+    }
+
+    private func fila(_ texto: String, _ monto: Double, flecha: Bool) -> some View {
+        HStack {
+            Text(texto).font(.caption).foregroundStyle(.primary)
+            Spacer()
+            Text(Formato.dinero(monto)).font(.caption.weight(.semibold))
+            if flecha { Image(systemName: "chevron.right").font(.caption2).foregroundStyle(.tertiary) }
+        }.padding(.leading, 8).padding(.vertical, 2).contentShape(Rectangle())
+    }
+}
+
+/// La cuota de cada préstamo, si ya se pagó en el ciclo y cuánto se pagó de más.
+private struct PrestamosDelCiclo: View {
+    let pc: PrestamosCiclo
+
+    var body: some View {
+        Seccion("Préstamos del ciclo") {
+            let cuotas = pc.cuotas ?? 0
+            Text("\(pc.pagadas ?? 0) de \(cuotas) " + (cuotas == 1 ? "cuota pagada" : "cuotas pagadas")
+                 + (pc.falta > 0 ? " · faltan \(Formato.dinero(pc.falta))" : "") + (pc.extra > 0 ? " · pagaste \(Formato.dinero(pc.extra)) de más" : ""))
+                .font(.caption).foregroundStyle(.secondary)
+            ForEach(pc.lista) { p in
+                NavigationLink(value: Ruta.prestamo(p.id)) {
+                    HStack(alignment: .top) {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(p.nombre).font(.subheadline).lineLimit(1)
+                            Text(p.cuota > 0 ? "Cuota \(Formato.dinero(p.cuota))" : "Sin cuota").font(.caption).foregroundStyle(.secondary)
+                            if let mora = p.mora, mora > 0 { Text("Incluye \(Formato.dinero(mora)) de mora").font(.caption2).foregroundStyle(.red) }
+                        }
+                        Spacer()
+                        VStack(alignment: .trailing, spacing: 2) {
+                            if p.pagada == true {
+                                Insignia(texto: "Pagada" + (p.fecha.map { " el \(Formato.fechaCorta($0))" } ?? ""), color: Semantica.ingreso)
+                            } else if p.pagado > 0 && p.cuota > 0 {
+                                Insignia(texto: "Faltan \(Formato.dinero(p.falta))", color: Semantica.aviso)
+                            } else if p.cuota > 0 {
+                                Insignia(texto: "Sin pagar", color: .secondary)
+                            } else {
+                                Text("Pagaste \(Formato.dinero(p.pagado))").font(.caption)
+                            }
+                            if p.extra > 0 { Text("\(Formato.dinero(p.extra)) de más").font(.caption.weight(.semibold)).foregroundStyle(Semantica.ingreso) }
+                        }
+                    }.padding(.vertical, 4).contentShape(Rectangle())
+                }.buttonStyle(.plain)
+                Divider()
+            }
+        }
+    }
+}
+
+/// Lo que se sacó de cada tarjeta en el ciclo (avances y pagos a otras) frente a lo que se le pagó, y a dónde fue.
+private struct AvancesEntreTarjetas: View {
+    let av: AvancesCiclo
+    private let colorSacado = Color.orange
+    private let colorPagado = Color.accentColor
+
+    private func linea(_ valor: Double, _ maximo: Double, _ color: Color) -> some View {
+        GeometryReader { g in
+            Capsule().fill(color).frame(width: valor > 0 ? max(2, g.size.width * min(1, valor / maximo)) : 0)
+        }.frame(height: 5)
+    }
+
+    var body: some View {
+        let maximo = max(av.lista.map { max($0.sacado, $0.recibido) }.max() ?? 1, 1)
+        Seccion("Avances y pagos entre tarjetas") {
+            HStack(spacing: 12) {
+                Label { Text("Sacado") } icon: { RoundedRectangle(cornerRadius: 2).fill(colorSacado).frame(width: 10, height: 10) }
+                Label { Text("Pagado a la tarjeta") } icon: { RoundedRectangle(cornerRadius: 2).fill(colorPagado).frame(width: 10, height: 10) }
+            }.font(.caption2).foregroundStyle(.secondary)
+            ForEach(av.lista) { t in
+                NavigationLink(value: Ruta.tarjeta(t.id)) {
+                    VStack(alignment: .leading, spacing: 3) {
+                        HStack(spacing: 6) {
+                            Circle().fill(Formato.color(t.color, .gray)).frame(width: 10, height: 10)
+                            Text(t.nombre).font(.subheadline).lineLimit(1)
+                            Spacer()
+                            Text("sacado \(Formato.dinero(t.sacado)) · pagado \(Formato.dinero(t.recibido))").font(.caption).foregroundStyle(.secondary)
+                        }
+                        linea(t.sacado, maximo, colorSacado)
+                        linea(t.recibido, maximo, colorPagado)
+                    }.padding(.vertical, 3).contentShape(Rectangle())
+                }.buttonStyle(.plain)
+            }
+            if !av.flujos.isEmpty {
+                Text("A dónde fue lo sacado").font(.subheadline.weight(.semibold)).padding(.top, 6)
+                ForEach(av.flujos, id: \.self) { f in
+                    HStack {
+                        Text("\(f.de) → \(f.a) (\(f.tipo == "avance" ? "avance" : "pago de tarjeta"))").font(.caption)
+                        Spacer()
+                        Text(Formato.dinero(f.monto)).font(.caption.weight(.semibold))
+                    }
+                }
+                Divider()
+                HStack {
+                    Text("Total sacado de las tarjetas").font(.subheadline.weight(.semibold))
+                    Spacer()
+                    Text(Formato.dinero(av.total ?? 0)).font(.subheadline.weight(.semibold))
+                }
             }
         }
     }

@@ -4,7 +4,9 @@ import SwiftUI
 /// categorías se puede cubrir.
 nonisolated struct ExcesoPresupuesto: Decodable, Identifiable, Hashable {
     let mensaje: String
-    let presupuestoId: Int
+    /// nil = la categoría no tenía presupuesto en el ciclo (sinPresupuesto): cubrirlo le crea uno.
+    let presupuestoId: Int?
+    var sinPresupuesto: Bool? = nil
     let categoria: String
     /// Vacíos al repartir lo que le queda a un presupuesto (disponible = lo que le queda; opciones = a cuáles pasarlo).
     var queda: String? = nil
@@ -13,7 +15,7 @@ nonisolated struct ExcesoPresupuesto: Decodable, Identifiable, Hashable {
     let disponible: String
     var alcanza: Bool? = nil
     let opciones: [OpcionPresupuesto]
-    var id: String { "\(presupuestoId)-\(excedente ?? disponible)" }
+    var id: String { "\(presupuestoId.map(String.init) ?? categoria)-\(excedente ?? disponible)" }
 }
 
 nonisolated struct OpcionPresupuesto: Decodable, Hashable, Identifiable {
@@ -95,6 +97,7 @@ struct HojaCubrirPresupuesto: View {
     let alDecidir: (DecisionPresupuesto) -> Void
 
     @Environment(\.dismiss) private var cerrar
+    private var sinPresupuesto: Bool { exceso.sinPresupuesto == true }
     @State private var montos: [Int: String] = [:] // presupuesto_id -> monto (solo las elegidas)
 
     /// Repartir: se sugiere pasar todo lo que le queda, pero se puede pasar menos.
@@ -115,6 +118,9 @@ struct HojaCubrirPresupuesto: View {
                     Label {
                         Text(repartir ? "A «\(exceso.categoria)» le quedan \(Formato.dinero(exceso.disponible)). Pásalo a las categorías que sí lo van a usar."
                              : manual ? "«\(exceso.categoria)» se pasó por \(Formato.dinero(exceso.excedente))."
+                             : sinPresupuesto ? "«\(exceso.categoria)» no tiene presupuesto en este ciclo"
+                                + (RepartoPresupuesto.centavos(exceso.queda) < 0 ? " y ya lleva \(Formato.dinero(Double(-RepartoPresupuesto.centavos(exceso.queda)) / 100)) gastados" : "")
+                                + ". Si lo guardas, te pasas del tope por \(Formato.dinero(exceso.excedente)). ¿Aun así deseas guardarlo?"
                              : "A «\(exceso.categoria)» le quedan \(Formato.dinero(exceso.queda)) y el gasto es de \(Formato.dinero(exceso.gasto)): te pasarías por \(Formato.dinero(exceso.excedente)).")
                     } icon: { Image(systemName: repartir ? "arrow.left.arrow.right.circle.fill" : "exclamationmark.triangle.fill").foregroundStyle(repartir ? .green : .orange) }
                 }
@@ -138,11 +144,11 @@ struct HojaCubrirPresupuesto: View {
                 }
                 if !manual {
                     Section {
-                        Button("Guardar y pasarme") { alDecidir(DecisionPresupuesto(modo: "pasarme")); cerrar() }
-                    } footer: { Text("Se guarda como antes y la categoría queda pasada.") }
+                        Button(sinPresupuesto ? "Guardarlo sin presupuesto" : "Guardar y pasarme") { alDecidir(DecisionPresupuesto(modo: "pasarme")); cerrar() }
+                    } footer: { Text(sinPresupuesto ? "Se guarda fuera de presupuesto y sale del tope del ciclo." : "Se guarda como antes y la categoría queda pasada.") }
                 }
             }
-            .navigationTitle(repartir ? "Pasar a otras categorías" : manual ? "Cubrir presupuesto" : "Te pasas del presupuesto")
+            .navigationTitle(repartir ? "Pasar a otras categorías" : manual ? "Cubrir presupuesto" : sinPresupuesto ? "Sin presupuesto" : "Te pasas del presupuesto")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) { Button("Cancelar") { cerrar() } }
