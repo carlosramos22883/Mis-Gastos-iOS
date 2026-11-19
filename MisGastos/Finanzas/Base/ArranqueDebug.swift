@@ -44,6 +44,10 @@ extension Ruta {
         case "compromiso": self = .compromiso(id)
         case "eventos": self = .eventos
         case "evento": self = .evento(id)
+        case "despensa": self = .despensa
+        case "compras": self = .compras
+        case "producto": self = .productoDespensa(id)
+        case "lista": self = .listaCompra(id)
         default: return nil
         }
     }

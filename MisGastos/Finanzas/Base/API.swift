@@ -153,6 +153,11 @@ final class API {
         return destino
     }
 
+    private func esNuestraAPI(_ url: URL) -> Bool {
+        guard let base = URL(string: Constants.baseURL) else { return false }
+        return url.host == base.host && url.port == base.port
+    }
+
     func olvidarImagen(_ direccion: String?) {
         if let d = direccion, let url = URL(string: d) { cache.removeObject(forKey: url as NSURL) }
     }
@@ -161,7 +166,8 @@ final class API {
         guard let url = URL(string: direccion) else { return nil }
         if let guardada = cache.object(forKey: url as NSURL) { return guardada as Data }
         var request = URLRequest(url: url)
-        if let token = KeychainManager.shared.getToken() { request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization") }
+        // El token solo va a nuestra API: nunca a otros sitios (ej. las fotos de productos de Walmart)
+        if esNuestraAPI(url), let token = KeychainManager.shared.getToken() { request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization") }
         guard let (datos, respuesta) = try? await URLSession.shared.data(for: request),
               (respuesta as? HTTPURLResponse)?.statusCode == 200 else { return nil }
         cache.setObject(datos as NSData, forKey: url as NSURL)

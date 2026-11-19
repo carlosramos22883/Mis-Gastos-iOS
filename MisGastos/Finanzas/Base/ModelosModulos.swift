@@ -14,6 +14,8 @@ nonisolated struct Catalogos: Decodable {
     let tiposIngreso: [TipoSimple]?
     let bancos: [BancoLogo]?
     let marcasRed: [BancoLogo]?
+    let categoriasDespensa: [TipoSimple]?
+    let despensa: ValoresDespensa?
 }
 
 // MARK: - Cuentas

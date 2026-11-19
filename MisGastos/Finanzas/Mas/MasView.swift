@@ -18,6 +18,10 @@ enum Ruta: Hashable {
     case proyecciones
     case eventos
     case evento(Int)
+    case despensa
+    case compras
+    case productoDespensa(Int)
+    case listaCompra(Int)
 }
 
 extension View {
@@ -41,8 +45,13 @@ extension View {
             case .proyecciones: ProyeccionesView()
             case .eventos: EventosView()
             case .evento(let id): EventoDetalleView(id: id)
+            case .despensa: DespensaView()
+            case .compras: ComprasView()
+            case .productoDespensa(let id): ProductoView(id: id, codigoInicial: nil)
+            case .listaCompra(let id): ListaCompraView(id: id)
             }
         }
+        .destinosDespensa()
     }
 }
 
@@ -69,6 +78,8 @@ struct MasView: View {
                 NavigationLink(value: Ruta.prestamos) { Label("Préstamos", systemImage: "percent") }
                 NavigationLink(value: Ruta.ingresos) { Label("Ingresos", systemImage: "arrow.down.circle") }
                 NavigationLink(value: Ruta.eventos) { Label("Eventos (dividir la cuenta)", systemImage: "fork.knife") }
+                NavigationLink(value: Ruta.despensa) { Label("Despensa", systemImage: "refrigerator") }
+                NavigationLink(value: Ruta.compras) { Label("Lista de compras", systemImage: "cart") }
                 NavigationLink(value: Ruta.reportes) { Label("Reportes", systemImage: "chart.bar.doc.horizontal") }
                 NavigationLink(value: Ruta.proyecciones) { Label("Proyecciones", systemImage: "chart.line.downtrend.xyaxis") }
             }

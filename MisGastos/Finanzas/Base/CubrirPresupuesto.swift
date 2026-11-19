@@ -15,6 +15,8 @@ nonisolated struct ExcesoPresupuesto: Decodable, Identifiable, Hashable {
     let disponible: String
     var alcanza: Bool? = nil
     let opciones: [OpcionPresupuesto]
+    /// Al pagar una compra con varias categorías: de cuál es el aviso (se reenvía en presupuestos[clave]).
+    var clave: String? = nil
     var id: String { "\(presupuestoId.map(String.init) ?? categoria)-\(excedente ?? disponible)" }
 }
 
